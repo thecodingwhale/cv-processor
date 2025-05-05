@@ -1,0 +1,193 @@
+import * as fs from 'fs'
+import * as path from 'path'
+import { AITextExtractor } from './extractors/AITextExtractor'
+import { SectionExtractor } from './extractors/SectionExtractor'
+import { CVData, ProcessorOptions } from './types'
+import { AIProvider } from './types/AIProvider'
+
+/**
+ * AI-powered CV Processor class to extract structured data from PDF resumes
+ */
+export class AICVProcessor {
+  private aiProvider: AIProvider
+  private textExtractor: AITextExtractor
+  private sectionExtractor: SectionExtractor
+  private verbose: boolean
+
+  /**
+   * Initialize the AI CV processor
+   */
+  constructor(aiProvider: AIProvider, options: ProcessorOptions = {}) {
+    this.aiProvider = aiProvider
+    this.textExtractor = new AITextExtractor(aiProvider)
+    this.sectionExtractor = new SectionExtractor()
+    this.verbose = options.verbose || false
+
+    if (this.verbose) {
+      console.log('AI CV Processor initialized')
+    }
+  }
+
+  /**
+   * Process a CV PDF and extract structured information using AI
+   */
+  async processCv(pdfPath: string): Promise<CVData> {
+    console.log(`Processing CV with AI: ${pdfPath}`)
+
+    // Extract text from PDF using AI
+    const text = await this.textExtractor.extractTextFromPDF(pdfPath)
+
+    // Define the data schema to match our CVData type
+    const dataSchema = {
+      type: 'object',
+      properties: {
+        personalInfo: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            email: { type: 'string' },
+            phone: { type: 'string' },
+            location: { type: 'string' },
+            website: { type: 'string' }, // actor portfolio or IMDb link
+            instagram: { type: 'string' }, // common for actors/models
+            representation: {
+              type: 'object',
+              properties: {
+                agency: { type: 'string' },
+                agentName: { type: 'string' },
+                agentContact: { type: 'string' },
+              },
+            },
+            unionAffiliations: {
+              type: 'array',
+              items: { type: 'string' }, // e.g., ['SAG-AFTRA', 'AEA']
+            },
+            summary: { type: 'string' }, // short bio / acting profile
+          },
+        },
+        media: {
+          type: 'object',
+          properties: {
+            headshots: {
+              type: 'array',
+              items: { type: 'string' }, // image URLs
+            },
+            demoReels: {
+              type: 'array',
+              items: { type: 'string' }, // video URLs
+            },
+            voiceReels: {
+              type: 'array',
+              items: { type: 'string' }, // for voice actors
+            },
+          },
+        },
+        training: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              institution: { type: 'string' },
+              program: { type: 'string' },
+              coachOrMentor: { type: 'string' },
+              focus: { type: 'string' }, // e.g., Meisner, On-Camera, Voice
+              startDate: { type: 'string' },
+              endDate: { type: 'string' },
+              location: { type: 'string' },
+            },
+          },
+        },
+        credits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              projectTitle: { type: 'string' },
+              type: { type: 'string' }, // e.g., 'Film', 'TV', 'Commercial', 'Theatre'
+              role: { type: 'string' },
+              productionCompany: { type: 'string' },
+              director: { type: 'string' },
+              year: { type: 'string' },
+              location: { type: 'string' },
+              link: { type: 'string' }, // optional trailer or scene
+            },
+          },
+        },
+        skills: {
+          type: 'object',
+          properties: {
+            performanceSkills: {
+              type: 'array',
+              items: { type: 'string' }, // e.g., 'Improvisation', 'Stage Combat'
+            },
+            accentsDialects: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+            languages: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+            instruments: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+            dance: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+            certifications: {
+              type: 'array',
+              items: { type: 'string' }, // e.g., 'Stage Combat Certified'
+            },
+            softSkills: {
+              type: 'array',
+              items: { type: 'string' }, // e.g., 'Team player', 'Takes direction well'
+            },
+          },
+        },
+      },
+    }
+
+    const instructions = `
+      You are a CV parser designed to extract structured information from resumes.
+      Analyze the provided CV/resume text and extract the following information:
+      
+      1. Personal information: name, email, phone, location, LinkedIn URL, GitHub URL, and professional summary
+      2. Education history: each institution with degree, field of study, dates, GPA if available, and location
+      3. Work experience: each position with company name, job title, dates, location, and bullet points of responsibilities/achievements
+      4. Skills: categorized as programming languages, frameworks, tools, soft skills, and other relevant skills
+      
+      Structure the data according to the provided JSON schema and ensure all fields are correctly populated.
+      If information is not found, use null for string fields and empty arrays for arrays.
+    `
+
+    // Use AI to extract structured data
+    const cvData = await this.aiProvider.extractStructuredData<CVData>(
+      text,
+      dataSchema,
+      instructions
+    )
+
+    // Add metadata
+    cvData.metadata = {
+      processedDate: new Date().toISOString(),
+      sourceFile: path.basename(pdfPath),
+    }
+
+    return cvData
+  }
+
+  /**
+   * Save CV data to a JSON file
+   */
+  saveToJson(cvData: CVData, outputPath: string): void {
+    try {
+      fs.writeFileSync(outputPath, JSON.stringify(cvData, null, 2))
+      console.log(`Results saved to ${outputPath}`)
+    } catch (error) {
+      console.error(`Error saving JSON file: ${error}`)
+      throw error
+    }
+  }
+}
