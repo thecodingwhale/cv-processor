@@ -1,5 +1,6 @@
 import { AIModelConfig, AIProvider } from '../types/AIProvider'
 import { GeminiAIProvider } from './GeminiAIProvider'
+import { OpenAIProvider } from './OpenAIProvider'
 
 export type AIProviderType = 'gemini' | 'openai' | 'anthropic'
 
@@ -14,9 +15,9 @@ export class AIProviderFactory {
     switch (type) {
       case 'gemini':
         return new GeminiAIProvider(config)
+      case 'openai':
+        return new OpenAIProvider(config)
       // Add more providers as needed
-      // case 'openai':
-      //   return new OpenAIProvider(config);
       // case 'anthropic':
       //   return new AnthropicProvider(config);
       default:

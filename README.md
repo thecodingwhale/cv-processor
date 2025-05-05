@@ -11,7 +11,7 @@ This is a TypeScript/Node.js port of the original Python-based CV Processor, now
 ## Features
 
 - PDF text extraction with OCR fallback for image-based PDFs
-- AI-powered extraction using Google's Gemini AI (default) with a flexible provider system
+- AI-powered extraction using Google's Gemini AI (default) or OpenAI with a flexible provider system
 - Traditional NLP-based extraction as a fallback option
 - Intelligent section detection (education, experience, skills, etc.)
 - NLP-based entity recognition for names, organizations, locations
@@ -42,6 +42,9 @@ To use the AI-powered features, you need to configure your API keys:
 ```
 # Google Gemini API Key
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# OpenAI API Key
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 ## Usage
@@ -61,13 +64,17 @@ npm start -- path/to/resume.pdf -o output.json
 # Use traditional (non-AI) processing
 npm start -- path/to/resume.pdf --traditional
 
+# Use OpenAI instead of Gemini
+npm start -- path/to/resume.pdf --use-ai openai
+
 # Specify a different AI model
-npm start -- path/to/resume.pdf --ai-model gemini-1.5-flash
+npm start -- path/to/resume.pdf --ai-model gpt-4o
+npm start -- path/to/resume.pdf --use-ai gemini --ai-model gemini-1.5-flash
 ```
 
 ### API Usage
 
-#### Using AI Processing
+#### Using AI Processing with Gemini
 
 ```typescript
 import { AIProviderFactory } from './dist/ai/AIProviderFactory'
@@ -82,6 +89,41 @@ const main = async () => {
 
   // Create AI provider and processor
   const aiProvider = AIProviderFactory.createProvider('gemini', aiConfig)
+  const processor = new AICVProcessor(aiProvider, { verbose: true })
+
+  try {
+    // Process the CV
+    const cvData = await processor.processCv('path/to/resume.pdf')
+
+    // Save to file
+    processor.saveToJson(cvData, 'output.json')
+
+    // Or use the data directly
+    console.log(cvData.personalInfo.name)
+    console.log(cvData.skills.programmingLanguages)
+  } catch (error) {
+    console.error('Error processing CV:', error)
+  }
+}
+
+main()
+```
+
+#### Using AI Processing with OpenAI
+
+```typescript
+import { AIProviderFactory } from './dist/ai/AIProviderFactory'
+import { AICVProcessor } from './dist/AICVProcessor'
+
+const main = async () => {
+  // Configure AI provider
+  const aiConfig = {
+    apiKey: process.env.OPENAI_API_KEY!,
+    model: 'gpt-4o',
+  }
+
+  // Create AI provider and processor
+  const aiProvider = AIProviderFactory.createProvider('openai', aiConfig)
   const processor = new AICVProcessor(aiProvider, { verbose: true })
 
   try {
@@ -187,7 +229,8 @@ The application is designed with a flexible AI provider system that allows you t
 1. **Built-in Providers:**
 
    - Google Gemini AI (default)
-   - (Placeholders for OpenAI and Anthropic implementations)
+   - OpenAI (GPT-4o, etc.)
+   - (Placeholders for Anthropic implementations)
 
 2. **Adding New Providers:**
    - Implement the `AIProvider` interface
@@ -196,11 +239,28 @@ The application is designed with a flexible AI provider system that allows you t
 ## Dependencies
 
 - **@google/generative-ai**: Google Gemini AI integration
+- **openai**: OpenAI API integration
 - **pdf-parse**: PDF text extraction
 - **tesseract.js**: OCR capability (for traditional processing)
 - **compromise**: Natural language processing (for traditional processing)
 - **commander**: CLI framework
 - **dotenv**: Environment variable management
+- **poppler-utils**: Required for PDF to image conversion when using OpenAI (external dependency)
+
+### System Dependencies
+
+To use OpenAI's vision capabilities with PDFs, you need to install poppler-utils:
+
+```bash
+# On macOS
+brew install poppler
+
+# On Ubuntu/Debian
+sudo apt-get install poppler-utils
+
+# On CentOS/RHEL
+sudo yum install poppler-utils
+```
 
 ## Limitations
 
