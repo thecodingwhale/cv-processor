@@ -54,6 +54,12 @@ AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name
 
 # Grok (X.AI) API Key
 GROK_API_KEY=your_grok_api_key_here
+
+# AWS Bedrock Configuration
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_REGION=us-east-1
+AWS_BEDROCK_INFERENCE_PROFILE_ARN=arn:aws:bedrock:us-east-1:123456789012:inference-profile/my-profile
 ```
 
 ### Azure OpenAI Setup
@@ -99,6 +105,32 @@ The application will automatically detect:
 
 For models without vision capabilities, the system will automatically extract text from PDFs before processing.
 
+### AWS Bedrock Setup
+
+To use AWS Bedrock:
+
+1. Create an AWS account and set up AWS Bedrock access
+2. Ensure you have the necessary permissions to use the models you want to access
+3. Request access to specific models like Claude 3 or Amazon Nova in the AWS console
+4. Set up your credentials either:
+   - Using environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION)
+   - Or using the AWS credentials file (~/.aws/credentials)
+
+AWS Bedrock supports multiple models with different capabilities:
+
+- **Amazon Nova models**:
+  - Good for structured data extraction
+  - Lower cost than premium models
+  - **Requires an inference profile ARN** for Nova models
+  - Example model ID: `apac.amazon.nova-micro-v1:0`
+  - Set `AWS_BEDROCK_INFERENCE_PROFILE_ARN` environment variable
+- **Claude models**:
+  - Support vision capabilities for processing PDFs visually
+  - Higher quality responses for complex tasks
+  - Example model ID: `anthropic.claude-3-sonnet-20240229-v1:0`
+
+> **Note**: Some AWS Bedrock models (especially Nova models) require specific inference profiles. You'll need to create an inference profile in the AWS Bedrock console and set the ARN in the `AWS_BEDROCK_INFERENCE_PROFILE_ARN` environment variable.
+
 ## Usage
 
 ### Command Line
@@ -124,6 +156,10 @@ npm start -- path/to/resume.pdf --use-ai azure
 
 # Use Grok (X.AI)
 npm start -- path/to/resume.pdf --use-ai grok
+
+# Use AWS Bedrock
+npm start -- path/to/resume.pdf --use-ai aws
+npm start -- path/to/resume.pdf --use-ai aws --ai-model anthropic.claude-3-sonnet-20240229-v1:0
 
 # Specify a different AI model
 npm start -- path/to/resume.pdf --ai-model gpt-4o
@@ -240,6 +276,45 @@ const main = async () => {
 main()
 ```
 
+#### Using AI Processing with AWS Bedrock
+
+```typescript
+import { AIProviderFactory } from './dist/ai/AIProviderFactory'
+import { AICVProcessor } from './dist/AICVProcessor'
+
+const main = async () => {
+  // Configure AI provider with AWS Bedrock settings
+  const aiConfig = {
+    apiKey: process.env.AWS_ACCESS_KEY_ID!, // Will be used if AWS credentials aren't configured
+    model: 'anthropic.claude-3-sonnet-20240229-v1:0', // Using Claude model which is widely supported
+    region: process.env.AWS_REGION || 'us-east-1',
+    // Optional: provide explicit credentials (or use AWS credential file)
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  }
+
+  // Create AI provider and processor
+  const aiProvider = AIProviderFactory.createProvider('aws', aiConfig)
+  const processor = new AICVProcessor(aiProvider, { verbose: true })
+
+  try {
+    // Process the CV
+    const cvData = await processor.processCv('path/to/resume.pdf')
+
+    // Save to file
+    processor.saveToJson(cvData, 'output.json')
+
+    // Or use the data directly
+    console.log(cvData.personalInfo.name)
+    console.log(cvData.skills.programmingLanguages)
+  } catch (error) {
+    console.error('Error processing CV:', error)
+  }
+}
+
+main()
+```
+
 #### Using Traditional Processing
 
 ```typescript
@@ -327,7 +402,8 @@ The application is designed with a flexible AI provider system that allows you t
    - Google Gemini AI (default)
    - OpenAI (GPT-4o, etc.)
    - Azure OpenAI (GPT-4o, etc.)
-   - (Placeholders for Anthropic implementations)
+   - Grok (X.AI) API
+   - AWS Bedrock (Amazon Nova, etc.)
 
 2. **Adding New Providers:**
    - Implement the `AIProvider` interface

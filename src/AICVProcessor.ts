@@ -160,22 +160,80 @@ export class AICVProcessor {
       
       Structure the data according to the provided JSON schema and ensure all fields are correctly populated.
       If information is not found, use null for string fields and empty arrays for arrays.
+      
+      IMPORTANT: Return ONLY the JSON object, with no additional text or markdown formatting.
     `
 
-    // Use AI to extract structured data
-    const cvData = await this.aiProvider.extractStructuredData<CVData>(
-      text,
-      dataSchema,
-      instructions
-    )
+    try {
+      // Use AI to extract structured data
+      const cvData = await this.aiProvider.extractStructuredData<CVData>(
+        text,
+        dataSchema,
+        instructions
+      )
 
-    // Add metadata
-    cvData.metadata = {
-      processedDate: new Date().toISOString(),
-      sourceFile: path.basename(pdfPath),
+      // Add metadata
+      cvData.metadata = {
+        processedDate: new Date().toISOString(),
+        sourceFile: path.basename(pdfPath),
+      }
+
+      return cvData
+    } catch (error: any) {
+      console.error(`Error in AI data extraction: ${error}`)
+
+      // If the result is a string (either JSON string or text with JSON embedded), try to parse it
+      if (error.response && typeof error.response === 'string') {
+        try {
+          // Check if the response is a JSON string
+          const jsonData = this.extractJsonFromString(error.response)
+          jsonData.metadata = {
+            processedDate: new Date().toISOString(),
+            sourceFile: path.basename(pdfPath),
+          }
+          return jsonData
+        } catch (jsonError) {
+          console.error(`Error parsing JSON from AI response: ${jsonError}`)
+        }
+      }
+
+      throw error
+    }
+  }
+
+  /**
+   * Utility method to extract JSON from a string that might contain markdown or other text
+   */
+  private extractJsonFromString(text: string): any {
+    // First, check if the string is just a JSON object
+    try {
+      return JSON.parse(text)
+    } catch (e) {
+      // Not a plain JSON string, continue to other extraction methods
     }
 
-    return cvData
+    // Try to extract JSON from markdown code blocks
+    const jsonMatch = text.match(/```(?:json)?\s*\n([\s\S]*?)\n```/)
+    if (jsonMatch && jsonMatch[1]) {
+      try {
+        return JSON.parse(jsonMatch[1])
+      } catch (e) {
+        console.error(`Error parsing JSON from code block: ${e}`)
+      }
+    }
+
+    // Try to extract any JSON-like structure using regex
+    const jsonPattern = /({[\s\S]*})/
+    const match = text.match(jsonPattern)
+    if (match && match[1]) {
+      try {
+        return JSON.parse(match[1])
+      } catch (e) {
+        console.error(`Error parsing JSON from pattern: ${e}`)
+      }
+    }
+
+    throw new Error('Could not extract valid JSON from response')
   }
 
   /**

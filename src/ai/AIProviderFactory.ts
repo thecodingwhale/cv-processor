@@ -1,15 +1,11 @@
 import { AIModelConfig, AIProvider } from '../types/AIProvider'
+import { AWSBedrockConfig, AWSBedrockProvider } from './AWSBedrockProvider'
 import { AzureOpenAIConfig, AzureOpenAIProvider } from './AzureOpenAIProvider'
 import { GeminiAIProvider } from './GeminiAIProvider'
 import { GrokAIConfig, GrokAIProvider } from './GrokAIProvider'
 import { OpenAIProvider } from './OpenAIProvider'
 
-export type AIProviderType =
-  | 'gemini'
-  | 'openai'
-  | 'azure'
-  | 'grok'
-  | 'anthropic'
+export type AIProviderType = 'gemini' | 'openai' | 'azure' | 'grok' | 'aws'
 
 export class AIProviderFactory {
   /**
@@ -31,9 +27,9 @@ export class AIProviderFactory {
         return new AzureOpenAIProvider(config as AzureOpenAIConfig)
       case 'grok':
         return new GrokAIProvider(config as GrokAIConfig)
+      case 'aws':
+        return new AWSBedrockProvider(config as AWSBedrockConfig)
       // Add more providers as needed
-      // case 'anthropic':
-      //   return new AnthropicProvider(config);
       default:
         throw new Error(`AI provider type ${type} not supported`)
     }

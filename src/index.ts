@@ -37,7 +37,7 @@ program
   .option('-v, --verbose', 'Verbose output')
   .option(
     '--use-ai [provider]',
-    'Use AI for processing (gemini, openai, azure, grok, or anthropic)',
+    'Use AI for processing (gemini, openai, azure, grok, aws)',
     'gemini'
   )
   .option('--ai-model <model>', 'AI model to use (default depends on provider)')
@@ -71,7 +71,10 @@ program
         console.log(`Using AI processing with provider: ${providerType}`)
 
         // Get API key from environment variables
-        const apiKeyEnvVar = `${providerType.toUpperCase()}_API_KEY`
+        const apiKeyEnvVar =
+          providerType === 'aws'
+            ? 'AWS_ACCESS_KEY_ID'
+            : `${providerType.toUpperCase()}_API_KEY`
         const apiKey = process.env[apiKeyEnvVar]
 
         if (!apiKey) {
@@ -121,6 +124,37 @@ program
             delete (aiConfig as any).temperature
           }
         }
+        // Add AWS Bedrock specific configuration
+        else if (providerType === 'aws') {
+          // AWS credentials can come from environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+          // or from the ~/.aws/credentials file
+
+          const region =
+            process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION
+
+          // Check for inference profile ARN
+          if (process.env.AWS_BEDROCK_INFERENCE_PROFILE_ARN) {
+            console.log(
+              `Using AWS Bedrock inference profile: ${process.env.AWS_BEDROCK_INFERENCE_PROFILE_ARN}`
+            )
+          } else if (options.aiModel && options.aiModel.includes('nova')) {
+            console.warn(
+              'Warning: Nova models may require an inference profile ARN'
+            )
+            console.warn(
+              'Set AWS_BEDROCK_INFERENCE_PROFILE_ARN environment variable'
+            )
+          }
+
+          // Set sensible defaults for AWS Bedrock config
+          aiConfig = {
+            apiKey, // Pass through the API key we already retrieved
+            model: options.aiModel || getDefaultModelForProvider(providerType),
+            region: region || 'us-east-1',
+          } as unknown as AIModelConfig
+
+          console.log(`Using AWS Bedrock with model: ${aiConfig.model}`)
+        }
 
         // Create AI provider and processor
         const aiProvider = AIProviderFactory.createProvider(
@@ -166,8 +200,8 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
       return 'gpt-4o' // Or the deployment name will be used
     case 'grok':
       return 'grok-3-mini-beta'
-    case 'anthropic':
-      return 'claude-3-opus-20240229'
+    case 'aws':
+      return 'apac.amazon.nova-micro-v1:0' // May need inference profile ARN
     default:
       return 'gemini-1.5-pro'
   }
