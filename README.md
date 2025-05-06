@@ -51,6 +51,9 @@ AZURE_OPENAI_API_KEY=your_azure_openai_api_key_here
 AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com
 AZURE_OPENAI_API_VERSION=2024-04-01-preview
 AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name
+
+# Grok (X.AI) API Key
+GROK_API_KEY=your_grok_api_key_here
 ```
 
 ### Azure OpenAI Setup
@@ -118,6 +121,9 @@ npm start -- path/to/resume.pdf --use-ai openai
 
 # Use Azure OpenAI
 npm start -- path/to/resume.pdf --use-ai azure
+
+# Use Grok (X.AI)
+npm start -- path/to/resume.pdf --use-ai grok
 
 # Specify a different AI model
 npm start -- path/to/resume.pdf --ai-model gpt-4o

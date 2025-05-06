@@ -1,9 +1,15 @@
 import { AIModelConfig, AIProvider } from '../types/AIProvider'
 import { AzureOpenAIConfig, AzureOpenAIProvider } from './AzureOpenAIProvider'
 import { GeminiAIProvider } from './GeminiAIProvider'
+import { GrokAIConfig, GrokAIProvider } from './GrokAIProvider'
 import { OpenAIProvider } from './OpenAIProvider'
 
-export type AIProviderType = 'gemini' | 'openai' | 'azure' | 'anthropic'
+export type AIProviderType =
+  | 'gemini'
+  | 'openai'
+  | 'azure'
+  | 'grok'
+  | 'anthropic'
 
 export class AIProviderFactory {
   /**
@@ -23,6 +29,8 @@ export class AIProviderFactory {
           throw new Error('Azure OpenAI provider requires an endpoint')
         }
         return new AzureOpenAIProvider(config as AzureOpenAIConfig)
+      case 'grok':
+        return new GrokAIProvider(config as GrokAIConfig)
       // Add more providers as needed
       // case 'anthropic':
       //   return new AnthropicProvider(config);

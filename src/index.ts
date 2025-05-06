@@ -37,7 +37,7 @@ program
   .option('-v, --verbose', 'Verbose output')
   .option(
     '--use-ai [provider]',
-    'Use AI for processing (gemini, openai, or anthropic)',
+    'Use AI for processing (gemini, openai, azure, grok, or anthropic)',
     'gemini'
   )
   .option('--ai-model <model>', 'AI model to use (default depends on provider)')
@@ -164,6 +164,8 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
       return 'gpt-4o'
     case 'azure':
       return 'gpt-4o' // Or the deployment name will be used
+    case 'grok':
+      return 'grok-3-mini-beta'
     case 'anthropic':
       return 'claude-3-opus-20240229'
     default:
