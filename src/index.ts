@@ -16,6 +16,7 @@ import * as path from 'path'
 import { AICVProcessor } from './AICVProcessor'
 import { CVProcessor } from './CVProcessor'
 import { AIProviderFactory, AIProviderType } from './ai/AIProviderFactory'
+import { AzureOpenAIConfig } from './ai/AzureOpenAIProvider'
 import { AIModelConfig } from './types/AIProvider'
 
 // Load environment variables
@@ -82,9 +83,43 @@ program
         }
 
         // Configure AI model
-        const aiConfig: AIModelConfig = {
+        let aiConfig: AIModelConfig | AzureOpenAIConfig = {
           apiKey,
           model: options.aiModel || getDefaultModelForProvider(providerType),
+        }
+
+        // Add Azure OpenAI specific configuration
+        if (providerType === 'azure') {
+          const endpoint = process.env.AZURE_OPENAI_ENDPOINT
+          if (!endpoint) {
+            console.error(
+              'Error: AZURE_OPENAI_ENDPOINT not found in environment variables'
+            )
+            console.error('Please set it in your .env file or environment')
+            process.exit(1)
+          }
+
+          const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME
+
+          // Set sensible defaults for Azure OpenAI config
+          aiConfig = {
+            ...aiConfig,
+            endpoint,
+            apiVersion:
+              process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview',
+            deploymentName,
+          } as AzureOpenAIConfig
+
+          // For deployments like o3-mini that don't support temperature
+          if (
+            deploymentName &&
+            (deploymentName.includes('mini') || deploymentName.includes('o3'))
+          ) {
+            console.log(
+              `Using model-specific configuration for ${deploymentName}`
+            )
+            delete (aiConfig as any).temperature
+          }
         }
 
         // Create AI provider and processor
@@ -127,6 +162,8 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
       return 'gemini-1.5-pro'
     case 'openai':
       return 'gpt-4o'
+    case 'azure':
+      return 'gpt-4o' // Or the deployment name will be used
     case 'anthropic':
       return 'claude-3-opus-20240229'
     default:

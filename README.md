@@ -45,7 +45,56 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 # OpenAI API Key
 OPENAI_API_KEY=your_openai_api_key_here
+
+# Azure OpenAI Configuration
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key_here
+AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com
+AZURE_OPENAI_API_VERSION=2024-04-01-preview
+AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name
 ```
+
+### Azure OpenAI Setup
+
+To use Azure OpenAI, you need to:
+
+1. Create an Azure OpenAI resource in the Azure portal
+2. Deploy a model (like gpt-4 or gpt-35-turbo) in the Azure OpenAI Studio
+3. Note down the following information:
+   - API Key (from "Keys and Endpoint" in your Azure OpenAI resource)
+   - Endpoint URL (e.g., https://your-resource-name.openai.azure.com)
+   - Deployment Name (the name you gave your model deployment, e.g., "gpt-4")
+   - API Version (use "2024-04-01-preview" or check the latest from Azure OpenAI documentation)
+
+Make sure to use the exact deployment name you created in Azure OpenAI Studio.
+
+For example, if your deployment in Azure OpenAI Studio is called "gpt-4", use:
+
+```
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+```
+
+#### Azure OpenAI Model-Specific Requirements
+
+Different Azure OpenAI models have different parameter requirements and capabilities:
+
+- **o3-mini models**:
+  - Don't support the `temperature` parameter
+  - Use `max_completion_tokens` instead of `max_tokens`
+  - Don't support vision capabilities (can't process images)
+- **Vision-capable models (GPT-4o, GPT-4 Vision)**:
+
+  - Support processing images from PDFs
+  - Used for visual document analysis
+
+- **Standard models (GPT-4, GPT-3.5-Turbo)**:
+  - Support standard parameters like `temperature` and `max_tokens`
+
+The application will automatically detect:
+
+1. Whether your model supports vision capabilities
+2. Parameter requirements for specific model types
+
+For models without vision capabilities, the system will automatically extract text from PDFs before processing.
 
 ## Usage
 
@@ -66,6 +115,9 @@ npm start -- path/to/resume.pdf --traditional
 
 # Use OpenAI instead of Gemini
 npm start -- path/to/resume.pdf --use-ai openai
+
+# Use Azure OpenAI
+npm start -- path/to/resume.pdf --use-ai azure
 
 # Specify a different AI model
 npm start -- path/to/resume.pdf --ai-model gpt-4o
@@ -124,6 +176,44 @@ const main = async () => {
 
   // Create AI provider and processor
   const aiProvider = AIProviderFactory.createProvider('openai', aiConfig)
+  const processor = new AICVProcessor(aiProvider, { verbose: true })
+
+  try {
+    // Process the CV
+    const cvData = await processor.processCv('path/to/resume.pdf')
+
+    // Save to file
+    processor.saveToJson(cvData, 'output.json')
+
+    // Or use the data directly
+    console.log(cvData.personalInfo.name)
+    console.log(cvData.skills.programmingLanguages)
+  } catch (error) {
+    console.error('Error processing CV:', error)
+  }
+}
+
+main()
+```
+
+#### Using AI Processing with Azure OpenAI
+
+```typescript
+import { AIProviderFactory } from './dist/ai/AIProviderFactory'
+import { AICVProcessor } from './dist/AICVProcessor'
+
+const main = async () => {
+  // Configure AI provider with Azure OpenAI settings
+  const aiConfig = {
+    apiKey: process.env.AZURE_OPENAI_API_KEY!,
+    model: 'gpt-4', // This can be any string, as Azure uses the deployment name
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT!,
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview',
+    deploymentName: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4', // Must match your Azure deployment name
+  }
+
+  // Create AI provider and processor
+  const aiProvider = AIProviderFactory.createProvider('azure', aiConfig)
   const processor = new AICVProcessor(aiProvider, { verbose: true })
 
   try {
@@ -230,6 +320,7 @@ The application is designed with a flexible AI provider system that allows you t
 
    - Google Gemini AI (default)
    - OpenAI (GPT-4o, etc.)
+   - Azure OpenAI (GPT-4o, etc.)
    - (Placeholders for Anthropic implementations)
 
 2. **Adding New Providers:**
