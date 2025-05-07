@@ -5,9 +5,20 @@ export interface AIModelConfig {
   maxTokens?: number
 }
 
+/**
+ * Token usage information returned by AI providers
+ */
+export interface TokenUsageInfo {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  estimatedCost?: number
+}
+
 export interface AIResponseFormat {
   text: string
   structuredData?: any
+  tokenUsage?: TokenUsageInfo
 }
 
 export interface AIProvider {
@@ -23,7 +34,7 @@ export interface AIProvider {
     text: string,
     dataSchema: object,
     instructions: string
-  ): Promise<T>
+  ): Promise<T & { tokenUsage?: TokenUsageInfo }>
 
   /**
    * Process PDF directly using the AI model (if supported)

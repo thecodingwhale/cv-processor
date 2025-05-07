@@ -48,12 +48,23 @@ export interface AccuracyScore {
   missingFields: string[] // List of important fields that are missing
 }
 
+/**
+ * Token usage information for tracking API costs
+ */
+export interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  estimatedCost?: number // Calculated cost based on pricing tiers
+}
+
 export interface CVData {
   personalInfo: PersonalInfo
   education: Education[]
   experience: Experience[]
   skills: Skills
   accuracy?: AccuracyScore // Added accuracy scoring
+  tokenUsage?: TokenUsage // Added token usage tracking
   metadata: {
     processedDate: string
     sourceFile: string
@@ -71,6 +82,7 @@ export interface ProcessorOptions {
   verbose?: boolean
   outputPath?: string
   minAccuracyThreshold?: number // Minimum accuracy threshold (0-100)
+  industryContext?: string // Context for industry-specific pattern recognition
   accuracyWeights?: {
     personalInfo?: number
     education?: number

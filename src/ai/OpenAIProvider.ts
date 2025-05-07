@@ -8,6 +8,7 @@ import {
   AIModelConfig,
   AIProvider,
   AIResponseFormat,
+  TokenUsageInfo,
 } from '../types/AIProvider'
 
 const execAsync = promisify(exec)
@@ -41,8 +42,15 @@ export class OpenAIProvider implements AIProvider {
         ],
       })
 
+      // Calculate token usage and estimated cost
+      const tokenUsage = this.calculateTokenUsage(
+        completion.usage?.prompt_tokens || 0,
+        completion.usage?.completion_tokens || 0
+      )
+
       return {
         text: completion.choices[0]?.message?.content || '',
+        tokenUsage,
       }
     } catch (error) {
       console.error('Error processing text with OpenAI:', error)
@@ -54,7 +62,7 @@ export class OpenAIProvider implements AIProvider {
     text: string,
     dataSchema: object,
     instructions: string
-  ): Promise<T> {
+  ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
     try {
       const prompt = `
         ${instructions}
@@ -83,7 +91,20 @@ export class OpenAIProvider implements AIProvider {
       })
 
       const responseText = completion.choices[0]?.message?.content || '{}'
-      return JSON.parse(responseText) as T
+
+      // Calculate token usage and estimated cost
+      const tokenUsage = this.calculateTokenUsage(
+        completion.usage?.prompt_tokens || 0,
+        completion.usage?.completion_tokens || 0
+      )
+
+      // Parse the JSON response and add token usage information
+      const parsedResponse = JSON.parse(responseText) as T
+
+      return {
+        ...parsedResponse,
+        tokenUsage,
+      }
     } catch (error) {
       console.error('Error extracting structured data with OpenAI:', error)
       throw error
@@ -213,6 +234,45 @@ export class OpenAIProvider implements AIProvider {
     return {
       provider: 'openai',
       model: this.config.model || 'gpt-4o',
+    }
+  }
+
+  /**
+   * Calculate token usage and estimated cost
+   * @param promptTokens Number of tokens in the prompt
+   * @param completionTokens Number of tokens in the completion
+   * @returns TokenUsageInfo object with usage details
+   */
+  private calculateTokenUsage(
+    promptTokens: number,
+    completionTokens: number
+  ): TokenUsageInfo {
+    const totalTokens = promptTokens + completionTokens
+
+    // Calculate estimated cost based on the model
+    // These rates should be updated if OpenAI changes their pricing
+    let estimatedCost = 0
+    const model = this.config.model || 'gpt-4o'
+
+    if (model.includes('gpt-4o')) {
+      // GPT-4o pricing (as of mid-2024)
+      estimatedCost =
+        (promptTokens / 1000) * 0.005 + (completionTokens / 1000) * 0.015
+    } else if (model.includes('gpt-4')) {
+      // GPT-4 pricing
+      estimatedCost =
+        (promptTokens / 1000) * 0.03 + (completionTokens / 1000) * 0.06
+    } else if (model.includes('gpt-3.5')) {
+      // GPT-3.5 pricing
+      estimatedCost =
+        (promptTokens / 1000) * 0.0005 + (completionTokens / 1000) * 0.0015
+    }
+
+    return {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      estimatedCost,
     }
   }
 }

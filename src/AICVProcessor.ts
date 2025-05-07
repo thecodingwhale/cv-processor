@@ -1,10 +1,12 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import { AISkillsExtractor } from './extractors/AISkillsExtractor'
 import { AITextExtractor } from './extractors/AITextExtractor'
 import { SectionExtractor } from './extractors/SectionExtractor'
-import { CVData, ProcessorOptions } from './types'
-import { AIProvider } from './types/AIProvider'
+import { CVData, ProcessorOptions, TokenUsage } from './types'
+import { AIProvider, TokenUsageInfo } from './types/AIProvider'
 import { AccuracyCalculator } from './utils/AccuracyCalculator'
+import { AIPatternExtractor } from './utils/AIPatternExtractor'
 
 /**
  * AI-powered CV Processor class to extract structured data from PDF resumes
@@ -13,9 +15,18 @@ export class AICVProcessor {
   private aiProvider: AIProvider
   private textExtractor: AITextExtractor
   private sectionExtractor: SectionExtractor
+  private skillsExtractor: AISkillsExtractor
+  private patternExtractor: AIPatternExtractor
   private accuracyCalculator: AccuracyCalculator
   private verbose: boolean
   private minAccuracyThreshold: number
+  private tokenUsage: TokenUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    estimatedCost: 0,
+  }
+  private industryContext: string // Store industry context for patterns
 
   /**
    * Initialize the AI CV processor
@@ -24,9 +35,12 @@ export class AICVProcessor {
     this.aiProvider = aiProvider
     this.textExtractor = new AITextExtractor(aiProvider)
     this.sectionExtractor = new SectionExtractor()
+    this.skillsExtractor = new AISkillsExtractor(aiProvider)
+    this.patternExtractor = new AIPatternExtractor(aiProvider)
     this.accuracyCalculator = new AccuracyCalculator(options)
     this.verbose = options.verbose || false
     this.minAccuracyThreshold = options.minAccuracyThreshold || 70
+    this.industryContext = options.industryContext || 'film and television'
 
     if (this.verbose) {
       console.log('AI CV Processor initialized')
@@ -40,8 +54,28 @@ export class AICVProcessor {
     console.log(`Processing CV with AI: ${pdfPath}`)
 
     try {
+      // Reset token usage for this processing job
+      this.resetTokenUsage()
+
       // Extract text from PDF using AI
       const text = await this.textExtractor.extractTextFromPDF(pdfPath)
+
+      // Track token usage from text extraction if available
+      this.addTokenUsageFromResponse(this.textExtractor.getTokenUsage())
+
+      // Get industry-specific patterns if not using static patterns
+      if (this.verbose) {
+        console.log(
+          `Extracting industry-specific patterns for: ${this.industryContext}`
+        )
+      }
+      const patterns = await this.patternExtractor.extractPatterns(
+        text,
+        this.industryContext
+      )
+
+      // Track token usage from pattern extraction
+      this.addTokenUsageFromResponse(this.patternExtractor.getTokenUsage())
 
       // Define the data schema to match our CVData type
       const dataSchema = {
@@ -152,17 +186,42 @@ export class AICVProcessor {
               },
             },
           },
+          physicalAttributes: {
+            type: 'object',
+            properties: {
+              height: { type: 'string' },
+              weight: { type: 'string' },
+              hairColor: { type: 'string' },
+              eyeColor: { type: 'string' },
+              bodyType: { type: 'string' },
+              clothing: {
+                type: 'object',
+                properties: {
+                  shirt: { type: 'string' },
+                  pants: { type: 'string' },
+                  dress: { type: 'string' },
+                  shoe: { type: 'string' },
+                  suit: { type: 'string' },
+                },
+              },
+            },
+          },
         },
       }
 
+      // Create a prompt that incorporates industry context and any patterns detected
       const instructions = `
-        You are a CV parser designed to extract structured information from resumes.
-        Analyze the provided CV/resume text and extract the following information:
+        You are a CV parser specializing in the ${this.industryContext} industry.
         
-        1. Personal information: name, email, phone, location, LinkedIn URL, GitHub URL, and professional summary
-        2. Education history: each institution with degree, field of study, dates, GPA if available, and location
-        3. Work experience: each position with company name, job title, dates, location, and bullet points of responsibilities/achievements
-        4. Skills: categorized as programming languages, frameworks, tools, soft skills, and other relevant skills
+        Analyze the provided CV/resume and extract structured information for a talent/performer.
+        
+        Focus on:
+        1. Personal information and representation (agent, manager, etc.)
+        2. Media links (demo reels, headshots, etc.)
+        3. Credits/experience in film, TV, commercials, theater, etc.
+        4. Training and education
+        5. Skills relevant to performance (acting styles, dialects, instruments, etc.)
+        6. Physical attributes (height, measurements, etc.)
         
         Structure the data according to the provided JSON schema and ensure all fields are correctly populated.
         If information is not found, use null for string fields and empty arrays for arrays.
@@ -177,6 +236,12 @@ export class AICVProcessor {
           dataSchema,
           instructions
         )
+
+        // Add token usage from the main extraction
+        if (cvData.tokenUsage) {
+          this.addTokenUsageFromResponse(cvData.tokenUsage)
+          delete cvData.tokenUsage // Remove it from the cvData as we'll add our aggregated version
+        }
 
         // Create default objects if any are missing
         if (!cvData.personalInfo)
@@ -200,31 +265,25 @@ export class AICVProcessor {
         }
 
         // Calculate accuracy score
-        const accuracy = this.accuracyCalculator.calculateAccuracy(cvData)
-        cvData.accuracy = accuracy
+        cvData.accuracy = this.accuracyCalculator.calculateAccuracy(cvData)
 
-        if (this.verbose) {
-          console.log(`CV Accuracy Score: ${accuracy.score}`)
-          console.log(`Completeness: ${accuracy.completeness}`)
-          console.log(`Confidence: ${accuracy.confidence}`)
+        // Add token usage information to the result
+        cvData.tokenUsage = this.getTokenUsage()
 
-          if (accuracy.missingFields.length > 0) {
-            console.log('Missing Fields:', accuracy.missingFields)
-          }
-
-          if (!this.accuracyCalculator.meetsThreshold(accuracy)) {
-            console.warn(
-              `Warning: CV data does not meet minimum accuracy threshold of ${this.minAccuracyThreshold}%`
-            )
-          }
+        // Test if it meets accuracy threshold
+        const meetsThreshold = this.meetsAccuracyThreshold(cvData)
+        if (!meetsThreshold && this.verbose) {
+          console.warn(
+            `CV does not meet minimum accuracy threshold of ${this.minAccuracyThreshold}%`
+          )
         }
 
         return cvData
-      } catch (error: any) {
-        console.error(`Error in AI data extraction: ${error}`)
-
-        // Create a fallback CV Data structure with empty values
-        const fallbackData: CVData = {
+      } catch (error) {
+        if (this.verbose) {
+          console.error('Error parsing JSON response:', error)
+        }
+        return {
           personalInfo: {
             name: null,
             email: null,
@@ -236,49 +295,18 @@ export class AICVProcessor {
           education: [],
           experience: [],
           skills: {},
+          tokenUsage: this.getTokenUsage(),
           metadata: {
             processedDate: new Date().toISOString(),
             sourceFile: path.basename(pdfPath),
-            provider: 'failed',
-            model: 'fallback',
-            error: error.message || 'Unknown error',
+            ...this.aiProvider.getModelInfo(),
+            error: error instanceof Error ? error.message : String(error),
           },
         }
-
-        // If the result is a string (either JSON string or text with JSON embedded), try to parse it
-        if (error.response && typeof error.response === 'string') {
-          try {
-            // Check if the response is a JSON string
-            const jsonData = this.extractJsonFromString(error.response)
-
-            // Merge the extracted data with our fallback data
-            fallbackData.personalInfo = {
-              ...fallbackData.personalInfo,
-              ...jsonData.personalInfo,
-            }
-            fallbackData.education = jsonData.education || []
-            fallbackData.experience = jsonData.experience || []
-            fallbackData.skills = jsonData.skills || {}
-            fallbackData.metadata = {
-              ...fallbackData.metadata,
-              ...this.aiProvider.getModelInfo(),
-            }
-          } catch (jsonError) {
-            console.error(`Error parsing JSON from AI response: ${jsonError}`)
-          }
-        }
-
-        // Calculate accuracy even for partially extracted data
-        const accuracy = this.accuracyCalculator.calculateAccuracy(fallbackData)
-        fallbackData.accuracy = accuracy
-
-        return fallbackData
       }
-    } catch (error: any) {
-      console.error(`Critical error in CV processing: ${error}`)
-
-      // Return a minimal valid data structure when everything fails
-      const minimalData: CVData = {
+    } catch (error) {
+      console.error(`Error processing CV: ${error}`)
+      return {
         personalInfo: {
           name: null,
           email: null,
@@ -290,56 +318,46 @@ export class AICVProcessor {
         education: [],
         experience: [],
         skills: {},
+        tokenUsage: this.getTokenUsage(),
         metadata: {
           processedDate: new Date().toISOString(),
           sourceFile: path.basename(pdfPath),
-          provider: 'error',
-          model: 'error',
-          error: error.message || 'Critical processing error',
+          error: error instanceof Error ? error.message : String(error),
         },
       }
-
-      // Calculate accuracy
-      const accuracy = this.accuracyCalculator.calculateAccuracy(minimalData)
-      minimalData.accuracy = accuracy
-
-      return minimalData
     }
   }
 
   /**
-   * Utility method to extract JSON from a string that might contain markdown or other text
+   * Add token usage from a response to the running total
    */
-  private extractJsonFromString(text: string): any {
-    // First, check if the string is just a JSON object
-    try {
-      return JSON.parse(text)
-    } catch (e) {
-      // Not a plain JSON string, continue to other extraction methods
-    }
+  private addTokenUsageFromResponse(usage?: TokenUsageInfo): void {
+    if (!usage) return
 
-    // Try to extract JSON from markdown code blocks
-    const jsonMatch = text.match(/```(?:json)?\s*\n([\s\S]*?)\n```/)
-    if (jsonMatch && jsonMatch[1]) {
-      try {
-        return JSON.parse(jsonMatch[1])
-      } catch (e) {
-        console.error(`Error parsing JSON from code block: ${e}`)
-      }
-    }
+    this.tokenUsage.promptTokens += usage.promptTokens || 0
+    this.tokenUsage.completionTokens += usage.completionTokens || 0
+    this.tokenUsage.totalTokens += usage.totalTokens || 0
+    this.tokenUsage.estimatedCost =
+      (this.tokenUsage.estimatedCost || 0) + (usage.estimatedCost || 0)
+  }
 
-    // Try to extract any JSON-like structure using regex
-    const jsonPattern = /({[\s\S]*})/
-    const match = text.match(jsonPattern)
-    if (match && match[1]) {
-      try {
-        return JSON.parse(match[1])
-      } catch (e) {
-        console.error(`Error parsing JSON from pattern: ${e}`)
-      }
+  /**
+   * Reset token usage statistics
+   */
+  private resetTokenUsage(): void {
+    this.tokenUsage = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
     }
+  }
 
-    throw new Error('Could not extract valid JSON from response')
+  /**
+   * Get current token usage
+   */
+  getTokenUsage(): TokenUsage {
+    return { ...this.tokenUsage }
   }
 
   /**
