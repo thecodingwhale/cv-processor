@@ -264,19 +264,11 @@ export class AICVProcessor {
           ...this.aiProvider.getModelInfo(),
         }
 
-        // Calculate accuracy score
-        cvData.accuracy = this.accuracyCalculator.calculateAccuracy(cvData)
-
         // Add token usage information to the result
         cvData.tokenUsage = this.getTokenUsage()
 
-        // Test if it meets accuracy threshold
-        const meetsThreshold = this.meetsAccuracyThreshold(cvData)
-        if (!meetsThreshold && this.verbose) {
-          console.warn(
-            `CV does not meet minimum accuracy threshold of ${this.minAccuracyThreshold}%`
-          )
-        }
+        // NOTE: Accuracy calculation moved to saveToJson method
+        // to ensure it's calculated on the final processed data
 
         return cvData
       } catch (error) {
@@ -365,6 +357,18 @@ export class AICVProcessor {
    */
   saveToJson(cvData: CVData, outputPath: string): void {
     try {
+      // Calculate accuracy score on the final processed data
+      // This ensures the accuracy reflects the data as it will be saved
+      cvData.accuracy = this.accuracyCalculator.calculateAccuracy(cvData)
+
+      // Test if it meets accuracy threshold
+      const meetsThreshold = this.meetsAccuracyThreshold(cvData)
+      if (!meetsThreshold && this.verbose) {
+        console.warn(
+          `CV does not meet minimum accuracy threshold of ${this.minAccuracyThreshold}%`
+        )
+      }
+
       // Generate a filename that includes provider, model, and timestamp
       const timestamp = new Date()
         .toISOString()
