@@ -404,14 +404,6 @@ async function processCv(
 
     // Compare results accuracy
     if (aiResults.length > 0) {
-      console.log('\n--- Accuracy Comparison ---')
-
-      aiResults.forEach((result) => {
-        console.log(
-          `${result.provider}: ${result.results.accuracy?.score || 'N/A'}%`
-        )
-      })
-
       // Find the most accurate result
       let bestProvider = aiResults[0].provider
       let bestScore = aiResults[0].results.accuracy?.score || 0
