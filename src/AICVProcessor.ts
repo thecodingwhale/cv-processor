@@ -5,6 +5,10 @@ import { CVData, ProcessorOptions, TokenUsage } from './types'
 import { AIProvider, TokenUsageInfo } from './types/AIProvider'
 import { AccuracyCalculator } from './utils/AccuracyCalculator'
 import { AIPatternExtractor } from './utils/AIPatternExtractor'
+import { NullBasedAccuracyCalculator } from './utils/NullBasedAccuracyCalculator'
+
+// Define the type for accuracy calculator
+type AccuracyCalculatorType = 'traditional' | 'null-based'
 
 /**
  * AI-powered CV Processor class to extract structured data from PDF resumes
@@ -14,7 +18,7 @@ export class AICVProcessor {
   private textExtractor: AITextExtractor
 
   private patternExtractor: AIPatternExtractor
-  private accuracyCalculator: AccuracyCalculator
+  private accuracyCalculator: AccuracyCalculator | NullBasedAccuracyCalculator
   private verbose: boolean
   private minAccuracyThreshold: number
   private tokenUsage: TokenUsage = {
@@ -28,17 +32,34 @@ export class AICVProcessor {
   /**
    * Initialize the AI CV processor
    */
-  constructor(aiProvider: AIProvider, options: ProcessorOptions = {}) {
+  constructor(
+    aiProvider: AIProvider,
+    options: ProcessorOptions & {
+      accuracyCalculatorType?: AccuracyCalculatorType
+    } = {}
+  ) {
     this.aiProvider = aiProvider
     this.textExtractor = new AITextExtractor(aiProvider)
     this.patternExtractor = new AIPatternExtractor(aiProvider)
-    this.accuracyCalculator = new AccuracyCalculator(options)
+
+    // Initialize the appropriate accuracy calculator
+    if (options.accuracyCalculatorType === 'null-based') {
+      this.accuracyCalculator = new NullBasedAccuracyCalculator(options)
+    } else {
+      this.accuracyCalculator = new AccuracyCalculator(options)
+    }
+
     this.verbose = options.verbose || false
     this.minAccuracyThreshold = options.minAccuracyThreshold || 70
     this.industryContext = options.industryContext || 'film and television'
 
     if (this.verbose) {
       console.log('AI CV Processor initialized')
+      console.log(
+        `Using ${
+          options.accuracyCalculatorType || 'traditional'
+        } accuracy calculator`
+      )
     }
   }
 
@@ -413,13 +434,36 @@ export class AICVProcessor {
   }
 
   /**
-   * Set minimum accuracy threshold
+   * Set the minimum accuracy threshold
    */
   setMinAccuracyThreshold(threshold: number): void {
-    if (threshold < 0 || threshold > 100) {
-      throw new Error('Accuracy threshold must be between 0 and 100')
+    this.minAccuracyThreshold = threshold
+  }
+
+  /**
+   * Change the accuracy calculator type
+   */
+  changeAccuracyCalculator(
+    type: AccuracyCalculatorType,
+    options: ProcessorOptions = {}
+  ): void {
+    const calculatorOptions = {
+      ...options,
+      minAccuracyThreshold:
+        options.minAccuracyThreshold || this.minAccuracyThreshold,
+      accuracyWeights: options.accuracyWeights,
     }
 
-    this.minAccuracyThreshold = threshold
+    if (type === 'null-based') {
+      this.accuracyCalculator = new NullBasedAccuracyCalculator(
+        calculatorOptions
+      )
+    } else {
+      this.accuracyCalculator = new AccuracyCalculator(calculatorOptions)
+    }
+
+    if (this.verbose) {
+      console.log(`Changed to ${type} accuracy calculator`)
+    }
   }
 }

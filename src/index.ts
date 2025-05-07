@@ -16,7 +16,7 @@ import * as path from 'path'
 import { AICVProcessor } from './AICVProcessor'
 import { AIProviderFactory, AIProviderType } from './ai/AIProviderFactory'
 import { AzureOpenAIConfig } from './ai/AzureOpenAIProvider'
-import { AIModelConfig, AIProvider } from './types/AIProvider'
+import { AIModelConfig } from './types/AIProvider'
 
 // Load environment variables
 dotenv.config()
@@ -40,6 +40,11 @@ program
     'gemini'
   )
   .option('--ai-model <model>', 'AI model to use (default depends on provider)')
+  .option(
+    '--accuracy-calculator [type]',
+    'Type of accuracy calculator to use (traditional, null-based)',
+    'traditional'
+  )
   .action(async (pdfFile, options) => {
     try {
       // Validate input file
@@ -60,6 +65,13 @@ program
       // Use AI processing
       const providerType = options.useAi as AIProviderType
       console.log(`Using AI processing with provider: ${providerType}`)
+
+      // Validate accuracy calculator type
+      const accuracyCalculatorType =
+        options.accuracyCalculator === 'null-based'
+          ? 'null-based'
+          : 'traditional'
+      console.log(`Using ${accuracyCalculatorType} accuracy calculator`)
 
       // Get API key from environment variables
       const apiKeyEnvVar =
@@ -153,6 +165,7 @@ program
       )
       const processor = new AICVProcessor(aiProvider, {
         verbose: options.verbose,
+        accuracyCalculatorType: accuracyCalculatorType,
       })
 
       const cvData = await processor.processCv(pdfFile)
@@ -202,8 +215,6 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
 async function processCv(
   pdfPath: string,
   options = {
-    useOpenAI: false,
-    useGemini: false,
     verbose: false,
     outputPath: './output.json',
     minAccuracyThreshold: 75, // Default threshold for acceptable accuracy
@@ -214,239 +225,81 @@ async function processCv(
       experience: 0.3,
       skills: 0.15,
     },
+    accuracyCalculatorType: 'traditional' as 'traditional' | 'null-based',
   }
 ) {
   console.log('Starting CV Processing')
+  console.log(`Using ${options.accuracyCalculatorType} accuracy calculator`)
 
   try {
-    const aiResults: Array<{ provider: string; results: any }> = []
+    // Use the default provider (based on CLI args or environment vars)
+    const defaultProvider = process.env.DEFAULT_AI_PROVIDER || 'gemini'
+    let apiProviderType: AIProviderType = defaultProvider as AIProviderType
 
-    // OpenAI processor
-    if (options.useOpenAI && process.env.OPENAI_API_KEY) {
-      console.log('\nProcessing with OpenAI...')
+    // Get API key from environment variables
+    const apiKeyEnvVar =
+      apiProviderType === 'aws'
+        ? 'AWS_ACCESS_KEY_ID'
+        : `${apiProviderType.toUpperCase()}_API_KEY`
+    const apiKey = process.env[apiKeyEnvVar]
 
-      // Import dynamically to avoid errors if the provider isn't available
-      try {
-        // Create a dynamic import with proper config
-        const openAIModule = await import('./ai/OpenAIProvider')
-        const openaiProvider = new openAIModule.OpenAIProvider({
-          apiKey: process.env.OPENAI_API_KEY || '',
-          model: 'gpt-4o',
-          temperature: 0.2,
-          maxTokens: 4096,
-        })
-
-        const openAIProcessor = new AICVProcessor(openaiProvider, {
-          verbose: options.verbose,
-          minAccuracyThreshold: options.minAccuracyThreshold,
-          accuracyWeights: options.accuracyWeights,
-        })
-
-        const openaiResults = await openAIProcessor.processCv(pdfPath)
-        aiResults.push({ provider: 'OpenAI', results: openaiResults })
-
-        // Log accuracy information
-        console.log('\n--- OpenAI Processing Results ---')
-        if (openaiResults.accuracy) {
-          console.log(`Accuracy Score: ${openaiResults.accuracy.score}%`)
-          console.log(`Completeness: ${openaiResults.accuracy.completeness}%`)
-          console.log(`Confidence: ${openaiResults.accuracy.confidence}%`)
-
-          if (openaiResults.accuracy.missingFields.length > 0) {
-            console.log(
-              'Missing Fields:',
-              openaiResults.accuracy.missingFields.slice(0, 5),
-              openaiResults.accuracy.missingFields.length > 5
-                ? `(and ${
-                    openaiResults.accuracy.missingFields.length - 5
-                  } more...)`
-                : ''
-            )
-          }
-
-          if (!openAIProcessor.meetsAccuracyThreshold(openaiResults)) {
-            console.warn(
-              `CV does not meet minimum accuracy threshold of ${options.minAccuracyThreshold}%`
-            )
-          }
-        }
-
-        // Save OpenAI results
-        openAIProcessor.saveToJson(openaiResults, options.outputPath)
-      } catch (error) {
-        console.error('Error initializing OpenAI provider:', error)
-      }
-    } else if (options.useOpenAI) {
-      console.log('OpenAI API key not found. Skipping OpenAI processing.')
-    }
-
-    // Gemini processor
-    if (options.useGemini && process.env.GEMINI_API_KEY) {
-      console.log('\nProcessing with Gemini...')
-
-      // Import dynamically to avoid errors if the provider isn't available
-      try {
-        // Check if the GeminiProvider module exists
-        let geminiProvider: AIProvider
-
-        try {
-          // Try to dynamically import the GeminiProvider module
-          // This will throw an error if the module doesn't exist
-          // @ts-ignore - Ignoring the import error as we're handling it in the catch block
-          const geminiModule = await import('./ai/GeminiProvider')
-          geminiProvider = new geminiModule.GeminiProvider({
-            apiKey: process.env.GEMINI_API_KEY || '',
-            model: 'gemini-1.5-pro',
-            temperature: 0.2,
-            maxTokens: 4096,
-          })
-        } catch (importError) {
-          console.warn(
-            'GeminiProvider module not found. Using a demo implementation.'
-          )
-          // Create a demo provider with a generic implementation
-          geminiProvider = {
-            processText: async () => ({ text: 'Demo Gemini response' }),
-            processPDF: async () => ({ text: 'Demo Gemini PDF response' }),
-            // Use 'any' for the type parameter to avoid generic type issues
-            extractStructuredData: async <T>(): Promise<T> => {
-              const demoData = {
-                personalInfo: {
-                  name: 'Demo Name',
-                  email: 'demo@example.com',
-                  phone: '555-1234',
-                  location: 'Demo City',
-                },
-                education: [
-                  {
-                    institution: 'Demo University',
-                    degree: 'BS',
-                    fieldOfStudy: 'Computer Science',
-                    startDate: '2018',
-                    endDate: '2022',
-                    gpa: '3.8',
-                    location: 'Demo City',
-                  },
-                ],
-                experience: [
-                  {
-                    company: 'Demo Corp',
-                    position: 'Software Engineer',
-                    startDate: '2022',
-                    endDate: 'Present',
-                    location: 'Demo City',
-                    description: ['Developed applications'],
-                  },
-                ],
-                skills: {
-                  programmingLanguages: ['JavaScript', 'TypeScript'],
-                  frameworks: ['React'],
-                  tools: ['Git'],
-                },
-                metadata: {
-                  processedDate: new Date().toISOString(),
-                  sourceFile: path.basename(pdfPath),
-                },
-              }
-              // Cast the demo data to the generic type
-              return demoData as unknown as T
-            },
-            getModelInfo: () => ({
-              provider: 'gemini-demo',
-              model: 'gemini-1.5-pro-demo',
-            }),
-          }
-        }
-
-        const geminiProcessor = new AICVProcessor(geminiProvider, {
-          verbose: options.verbose,
-          minAccuracyThreshold: options.minAccuracyThreshold,
-          accuracyWeights: options.accuracyWeights,
-        })
-
-        const geminiResults = await geminiProcessor.processCv(pdfPath)
-        aiResults.push({ provider: 'Gemini', results: geminiResults })
-
-        // Log accuracy information
-        console.log('\n--- Gemini Processing Results ---')
-        if (geminiResults.accuracy) {
-          console.log(`Accuracy Score: ${geminiResults.accuracy.score}%`)
-          console.log(`Completeness: ${geminiResults.accuracy.completeness}%`)
-          console.log(`Confidence: ${geminiResults.accuracy.confidence}%`)
-
-          if (geminiResults.accuracy.missingFields.length > 0) {
-            console.log(
-              'Missing Fields:',
-              geminiResults.accuracy.missingFields.slice(0, 5),
-              geminiResults.accuracy.missingFields.length > 5
-                ? `(and ${
-                    geminiResults.accuracy.missingFields.length - 5
-                  } more...)`
-                : ''
-            )
-          }
-
-          if (!geminiProcessor.meetsAccuracyThreshold(geminiResults)) {
-            console.warn(
-              `CV does not meet minimum accuracy threshold of ${options.minAccuracyThreshold}%`
-            )
-          }
-        }
-
-        // Save Gemini results
-        geminiProcessor.saveToJson(geminiResults, options.outputPath)
-      } catch (error) {
-        console.error('Error using Gemini provider:', error)
-      }
-    } else if (options.useGemini) {
-      console.log('Gemini API key not found. Skipping Gemini processing.')
-    }
-
-    // Compare results accuracy
-    if (aiResults.length > 0) {
-      // Find the most accurate result
-      let bestProvider = aiResults[0].provider
-      let bestScore = aiResults[0].results.accuracy?.score || 0
-
-      aiResults.forEach((result) => {
-        const score = result.results.accuracy?.score || 0
-        if (score > bestScore) {
-          bestScore = score
-          bestProvider = result.provider
-        }
-      })
-
-      console.log(
-        `\nBest extraction results from: ${bestProvider} (${bestScore}%)`
+    if (!apiKey) {
+      console.error(
+        `Error: API key not found in environment variables (${apiKeyEnvVar})`
       )
+      console.error('Please set it in your .env file or environment')
+      throw new Error(`Missing API key for provider: ${apiProviderType}`)
     }
 
-    console.log('\nAll processing completed successfully.')
-
-    // Return the best result if available, otherwise the first result
-    if (aiResults.length > 0) {
-      return aiResults[0].results
+    // Configure AI provider
+    let aiConfig: AIModelConfig = {
+      apiKey,
+      model: getDefaultModelForProvider(apiProviderType),
     }
 
-    // Return empty data if no results
-    return {
-      personalInfo: {
-        name: null,
-        email: null,
-        phone: null,
-        location: null,
-        linkedin: null,
-        github: null,
-      },
-      education: [],
-      experience: [],
-      skills: {},
-      metadata: {
-        processedDate: new Date().toISOString(),
-        sourceFile: path.basename(pdfPath),
-        error: 'No AI providers were able to process this CV',
-      },
+    const aiProvider = AIProviderFactory.createProvider(
+      apiProviderType,
+      aiConfig
+    )
+
+    const processor = new AICVProcessor(aiProvider, {
+      verbose: options.verbose,
+      minAccuracyThreshold: options.minAccuracyThreshold,
+      accuracyWeights: options.accuracyWeights,
+      accuracyCalculatorType: options.accuracyCalculatorType,
+    })
+
+    const results = await processor.processCv(pdfPath)
+
+    // Log accuracy information
+    console.log(`\n--- Processing Results (${apiProviderType}) ---`)
+    if (results.accuracy) {
+      console.log(`Accuracy Score: ${results.accuracy.score}%`)
+      console.log(`Completeness: ${results.accuracy.completeness}%`)
+      console.log(`Confidence: ${results.accuracy.confidence}%`)
+
+      if (results.accuracy.missingFields.length > 0) {
+        console.log(
+          'Missing Fields:',
+          results.accuracy.missingFields.slice(0, 5),
+          results.accuracy.missingFields.length > 5
+            ? `(and ${results.accuracy.missingFields.length - 5} more...)`
+            : ''
+        )
+      }
+
+      if (!processor.meetsAccuracyThreshold(results)) {
+        console.warn(
+          `CV does not meet minimum accuracy threshold of ${options.minAccuracyThreshold}%`
+        )
+      }
     }
+
+    // Save results
+    processor.saveToJson(results, options.outputPath)
+    console.log('\nProcessing completed successfully.')
+
+    return results
   } catch (error) {
     console.error('Error in CV processing:', error)
     throw error
@@ -474,8 +327,6 @@ async function main() {
 
     // Process the CV with different AI options
     await processCv(pdfPath, {
-      useOpenAI: true,
-      useGemini: true,
       verbose: true,
       outputPath,
       minAccuracyThreshold: 70, // Set minimum accuracy to 70%
@@ -485,6 +336,7 @@ async function main() {
         experience: 0.35, // Higher weight for experience
         skills: 0.15,
       },
+      accuracyCalculatorType: 'null-based', // Use the null-based calculator
     })
   } catch (error) {
     console.error('Error:', error)

@@ -65,10 +65,10 @@ export class AccuracyCalculator {
 
     // Calculate weighted overall score
     const fieldScores = {
-      personalInfo: personalInfoScore,
-      education: educationScore,
-      experience: experienceScore,
-      skills: skillsScore,
+      personalInfo: Math.round(personalInfoScore * 100),
+      education: Math.round(educationScore * 100),
+      experience: Math.round(experienceScore * 100),
+      skills: Math.round(skillsScore * 100),
     }
 
     const overallScore =
@@ -84,9 +84,9 @@ export class AccuracyCalculator {
     const confidence = this.calculateConfidence(cvData)
 
     return {
-      score: Math.round(overallScore * 100) / 100, // Round to 2 decimal places
-      completeness: Math.round(completeness * 100) / 100,
-      confidence: Math.round(confidence * 100) / 100,
+      score: Math.round(overallScore * 100), // Convert to percentage
+      completeness: Math.round(completeness * 100), // Convert to percentage
+      confidence: Math.round(confidence * 100), // Convert to percentage
       fieldScores,
       missingFields,
     }
