@@ -18,6 +18,27 @@ This is a TypeScript/Node.js port of the original Python-based CV Processor, now
 - Pattern matching for contact info, dates, etc.
 - Skill categorization by type
 - CLI interface for easy use
+- **Accuracy scoring and quality assessment**
+
+## Accuracy Scoring
+
+The CV processor now includes an accuracy scoring system that evaluates how well the data extraction performed. This provides several benefits:
+
+- Quantify the completeness and accuracy of extracted CV data
+- Compare results between different extraction methods (traditional vs AI-based)
+- Filter CVs that don't meet minimum quality thresholds
+- Identify missing or problematic data fields
+
+### How Accuracy is Calculated
+
+The accuracy score considers several factors:
+
+- **Completeness**: What percentage of expected fields were successfully extracted
+- **Confidence**: How trustworthy is the extracted data (based on consistency checks)
+- **Section Weights**: Configurable importance weights for different CV sections
+- **Missing Fields**: Detailed list of important fields that weren't found
+
+Each CV gets an overall score (0-100%) as well as section-specific scores.
 
 ## Installation
 
@@ -445,3 +466,116 @@ sudo yum install poppler-utils
 ## License
 
 MIT
+
+## Usage
+
+```typescript
+import { processCv } from './src'
+import * as path from 'path'
+
+// Process a CV with rule-based extraction
+const pdfPath = path.resolve(__dirname, 'sample_resume.pdf')
+
+// Process with all available methods and custom accuracy threshold
+processCv(pdfPath, {
+  useOpenAI: true,
+  useGemini: true,
+  verbose: true,
+  outputPath: './output/results.json',
+  minAccuracyThreshold: 70, // Set minimum accuracy to 70%
+  accuracyWeights: {
+    personalInfo: 0.3, // Higher weight for personal info
+    education: 0.2,
+    experience: 0.35, // Higher weight for experience
+    skills: 0.15,
+  },
+})
+```
+
+## Configuration
+
+### Processor Options
+
+| Option                 | Type      | Description                           |
+| ---------------------- | --------- | ------------------------------------- |
+| `verbose`              | `boolean` | Enable detailed logging               |
+| `outputPath`           | `string`  | Path to save output JSON files        |
+| `minAccuracyThreshold` | `number`  | Minimum accuracy threshold (0-100)    |
+| `accuracyWeights`      | `object`  | Custom weights for different sections |
+
+### Accuracy Threshold
+
+Set a minimum accuracy threshold (0-100%) to filter out low-quality extractions:
+
+```typescript
+const processor = new CVProcessor({
+  minAccuracyThreshold: 75, // Require at least 75% accuracy
+})
+
+const results = await processor.processCv('resume.pdf')
+if (processor.meetsAccuracyThreshold(results)) {
+  // Process high-quality extraction
+} else {
+  // Handle low-quality extraction
+}
+```
+
+## Output Format
+
+The extracted data follows this structure:
+
+```typescript
+interface CVData {
+  personalInfo: {
+    name: string | null
+    email: string | null
+    phone: string | null
+    location: string | null
+    linkedin: string | null
+    github: string | null
+    summary?: string | null
+  }
+  education: Array<{
+    institution: string | null
+    degree: string | null
+    fieldOfStudy: string | null
+    startDate: string | null
+    endDate: string | null
+    gpa: string | null
+    location: string | null
+  }>
+  experience: Array<{
+    company: string | null
+    position: string | null
+    startDate: string | null
+    endDate: string | null
+    location: string | null
+    description: string[]
+  }>
+  skills: {
+    programmingLanguages?: string[]
+    frameworks?: string[]
+    tools?: string[]
+    softSkills?: string[]
+    other?: string[]
+  }
+  accuracy?: {
+    score: number
+    completeness: number
+    confidence: number
+    fieldScores: {
+      personalInfo?: number
+      education?: number
+      experience?: number
+      skills?: number
+    }
+    missingFields: string[]
+  }
+  metadata: {
+    processedDate: string
+    sourceFile: string
+    model?: string
+    provider?: string
+  }
+}
+```
