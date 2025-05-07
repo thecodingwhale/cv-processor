@@ -26,7 +26,7 @@ export class AICVProcessor {
     this.sectionExtractor = new SectionExtractor()
     this.accuracyCalculator = new AccuracyCalculator(options)
     this.verbose = options.verbose || false
-    this.minAccuracyThreshold = options.minAccuracyThreshold || 60
+    this.minAccuracyThreshold = options.minAccuracyThreshold || 70
 
     if (this.verbose) {
       console.log('AI CV Processor initialized')
@@ -39,197 +39,271 @@ export class AICVProcessor {
   async processCv(pdfPath: string): Promise<CVData> {
     console.log(`Processing CV with AI: ${pdfPath}`)
 
-    // Extract text from PDF using AI
-    const text = await this.textExtractor.extractTextFromPDF(pdfPath)
+    try {
+      // Extract text from PDF using AI
+      const text = await this.textExtractor.extractTextFromPDF(pdfPath)
 
-    // Define the data schema to match our CVData type
-    const dataSchema = {
-      type: 'object',
-      properties: {
-        personalInfo: {
-          type: 'object',
-          properties: {
-            name: { type: 'string' },
-            email: { type: 'string' },
-            phone: { type: 'string' },
-            location: { type: 'string' },
-            website: { type: 'string' }, // actor portfolio or IMDb link
-            instagram: { type: 'string' }, // common for actors/models
-            representation: {
-              type: 'object',
-              properties: {
-                agency: { type: 'string' },
-                agentName: { type: 'string' },
-                agentContact: { type: 'string' },
+      // Define the data schema to match our CVData type
+      const dataSchema = {
+        type: 'object',
+        properties: {
+          personalInfo: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              email: { type: 'string' },
+              phone: { type: 'string' },
+              location: { type: 'string' },
+              website: { type: 'string' }, // actor portfolio or IMDb link
+              instagram: { type: 'string' }, // common for actors/models
+              representation: {
+                type: 'object',
+                properties: {
+                  agency: { type: 'string' },
+                  agentName: { type: 'string' },
+                  agentContact: { type: 'string' },
+                },
+              },
+              unionAffiliations: {
+                type: 'array',
+                items: { type: 'string' }, // e.g., ['SAG-AFTRA', 'AEA']
+              },
+              summary: { type: 'string' }, // short bio / acting profile
+            },
+          },
+          media: {
+            type: 'object',
+            properties: {
+              headshots: {
+                type: 'array',
+                items: { type: 'string' }, // image URLs
+              },
+              demoReels: {
+                type: 'array',
+                items: { type: 'string' }, // video URLs
+              },
+              voiceReels: {
+                type: 'array',
+                items: { type: 'string' }, // for voice actors
               },
             },
-            unionAffiliations: {
-              type: 'array',
-              items: { type: 'string' }, // e.g., ['SAG-AFTRA', 'AEA']
-            },
-            summary: { type: 'string' }, // short bio / acting profile
           },
-        },
-        media: {
-          type: 'object',
-          properties: {
-            headshots: {
-              type: 'array',
-              items: { type: 'string' }, // image URLs
-            },
-            demoReels: {
-              type: 'array',
-              items: { type: 'string' }, // video URLs
-            },
-            voiceReels: {
-              type: 'array',
-              items: { type: 'string' }, // for voice actors
+          training: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                institution: { type: 'string' },
+                program: { type: 'string' },
+                coachOrMentor: { type: 'string' },
+                focus: { type: 'string' }, // e.g., Meisner, On-Camera, Voice
+                startDate: { type: 'string' },
+                endDate: { type: 'string' },
+                location: { type: 'string' },
+              },
             },
           },
-        },
-        training: {
-          type: 'array',
-          items: {
+          credits: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                projectTitle: { type: 'string' },
+                type: { type: 'string' }, // e.g., 'Film', 'TV', 'Commercial', 'Theatre'
+                role: { type: 'string' },
+                productionCompany: { type: 'string' },
+                director: { type: 'string' },
+                year: { type: 'string' },
+                location: { type: 'string' },
+                link: { type: 'string' }, // optional trailer or scene
+              },
+            },
+          },
+          skills: {
             type: 'object',
             properties: {
-              institution: { type: 'string' },
-              program: { type: 'string' },
-              coachOrMentor: { type: 'string' },
-              focus: { type: 'string' }, // e.g., Meisner, On-Camera, Voice
-              startDate: { type: 'string' },
-              endDate: { type: 'string' },
-              location: { type: 'string' },
+              performanceSkills: {
+                type: 'array',
+                items: { type: 'string' }, // e.g., 'Improvisation', 'Stage Combat'
+              },
+              accentsDialects: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+              languages: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+              instruments: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+              dance: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+              certifications: {
+                type: 'array',
+                items: { type: 'string' }, // e.g., 'Stage Combat Certified'
+              },
+              softSkills: {
+                type: 'array',
+                items: { type: 'string' }, // e.g., 'Team player', 'Takes direction well'
+              },
             },
           },
         },
-        credits: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              projectTitle: { type: 'string' },
-              type: { type: 'string' }, // e.g., 'Film', 'TV', 'Commercial', 'Theatre'
-              role: { type: 'string' },
-              productionCompany: { type: 'string' },
-              director: { type: 'string' },
-              year: { type: 'string' },
-              location: { type: 'string' },
-              link: { type: 'string' }, // optional trailer or scene
-            },
-          },
-        },
-        skills: {
-          type: 'object',
-          properties: {
-            performanceSkills: {
-              type: 'array',
-              items: { type: 'string' }, // e.g., 'Improvisation', 'Stage Combat'
-            },
-            accentsDialects: {
-              type: 'array',
-              items: { type: 'string' },
-            },
-            languages: {
-              type: 'array',
-              items: { type: 'string' },
-            },
-            instruments: {
-              type: 'array',
-              items: { type: 'string' },
-            },
-            dance: {
-              type: 'array',
-              items: { type: 'string' },
-            },
-            certifications: {
-              type: 'array',
-              items: { type: 'string' }, // e.g., 'Stage Combat Certified'
-            },
-            softSkills: {
-              type: 'array',
-              items: { type: 'string' }, // e.g., 'Team player', 'Takes direction well'
-            },
-          },
-        },
-      },
-    }
-
-    const instructions = `
-      You are a CV parser designed to extract structured information from resumes.
-      Analyze the provided CV/resume text and extract the following information:
-      
-      1. Personal information: name, email, phone, location, LinkedIn URL, GitHub URL, and professional summary
-      2. Education history: each institution with degree, field of study, dates, GPA if available, and location
-      3. Work experience: each position with company name, job title, dates, location, and bullet points of responsibilities/achievements
-      4. Skills: categorized as programming languages, frameworks, tools, soft skills, and other relevant skills
-      
-      Structure the data according to the provided JSON schema and ensure all fields are correctly populated.
-      If information is not found, use null for string fields and empty arrays for arrays.
-      
-      IMPORTANT: Return ONLY the JSON object, with no additional text or markdown formatting.
-    `
-
-    try {
-      // Use AI to extract structured data
-      const cvData = await this.aiProvider.extractStructuredData<CVData>(
-        text,
-        dataSchema,
-        instructions
-      )
-
-      // Add metadata
-      cvData.metadata = {
-        processedDate: new Date().toISOString(),
-        sourceFile: path.basename(pdfPath),
-        ...this.aiProvider.getModelInfo(),
       }
 
-      // Calculate accuracy score
-      const accuracy = this.accuracyCalculator.calculateAccuracy(cvData)
-      cvData.accuracy = accuracy
+      const instructions = `
+        You are a CV parser designed to extract structured information from resumes.
+        Analyze the provided CV/resume text and extract the following information:
+        
+        1. Personal information: name, email, phone, location, LinkedIn URL, GitHub URL, and professional summary
+        2. Education history: each institution with degree, field of study, dates, GPA if available, and location
+        3. Work experience: each position with company name, job title, dates, location, and bullet points of responsibilities/achievements
+        4. Skills: categorized as programming languages, frameworks, tools, soft skills, and other relevant skills
+        
+        Structure the data according to the provided JSON schema and ensure all fields are correctly populated.
+        If information is not found, use null for string fields and empty arrays for arrays.
+        
+        IMPORTANT: Return ONLY the JSON object, with no additional text or markdown formatting.
+      `
 
-      if (this.verbose) {
-        console.log(`CV Accuracy Score: ${accuracy.score}`)
-        console.log(`Completeness: ${accuracy.completeness}`)
-        console.log(`Confidence: ${accuracy.confidence}`)
+      try {
+        // Use AI to extract structured data
+        const cvData = await this.aiProvider.extractStructuredData<CVData>(
+          text,
+          dataSchema,
+          instructions
+        )
 
-        if (accuracy.missingFields.length > 0) {
-          console.log('Missing Fields:', accuracy.missingFields)
+        // Create default objects if any are missing
+        if (!cvData.personalInfo)
+          cvData.personalInfo = {
+            name: null,
+            email: null,
+            phone: null,
+            location: null,
+            linkedin: null,
+            github: null,
+          }
+        if (!cvData.education) cvData.education = []
+        if (!cvData.experience) cvData.experience = []
+        if (!cvData.skills) cvData.skills = {}
+
+        // Add metadata
+        cvData.metadata = {
+          processedDate: new Date().toISOString(),
+          sourceFile: path.basename(pdfPath),
+          ...this.aiProvider.getModelInfo(),
         }
 
-        if (!this.accuracyCalculator.meetsThreshold(accuracy)) {
-          console.warn(
-            `Warning: CV data does not meet minimum accuracy threshold of ${this.minAccuracyThreshold}%`
-          )
-        }
-      }
+        // Calculate accuracy score
+        const accuracy = this.accuracyCalculator.calculateAccuracy(cvData)
+        cvData.accuracy = accuracy
 
-      return cvData
-    } catch (error: any) {
-      console.error(`Error in AI data extraction: ${error}`)
+        if (this.verbose) {
+          console.log(`CV Accuracy Score: ${accuracy.score}`)
+          console.log(`Completeness: ${accuracy.completeness}`)
+          console.log(`Confidence: ${accuracy.confidence}`)
 
-      // If the result is a string (either JSON string or text with JSON embedded), try to parse it
-      if (error.response && typeof error.response === 'string') {
-        try {
-          // Check if the response is a JSON string
-          const jsonData = this.extractJsonFromString(error.response)
-          jsonData.metadata = {
-            processedDate: new Date().toISOString(),
-            sourceFile: path.basename(pdfPath),
-            ...this.aiProvider.getModelInfo(),
+          if (accuracy.missingFields.length > 0) {
+            console.log('Missing Fields:', accuracy.missingFields)
           }
 
-          // Calculate accuracy even for partially extracted data
-          const accuracy = this.accuracyCalculator.calculateAccuracy(jsonData)
-          jsonData.accuracy = accuracy
-
-          return jsonData
-        } catch (jsonError) {
-          console.error(`Error parsing JSON from AI response: ${jsonError}`)
+          if (!this.accuracyCalculator.meetsThreshold(accuracy)) {
+            console.warn(
+              `Warning: CV data does not meet minimum accuracy threshold of ${this.minAccuracyThreshold}%`
+            )
+          }
         }
+
+        return cvData
+      } catch (error: any) {
+        console.error(`Error in AI data extraction: ${error}`)
+
+        // Create a fallback CV Data structure with empty values
+        const fallbackData: CVData = {
+          personalInfo: {
+            name: null,
+            email: null,
+            phone: null,
+            location: null,
+            linkedin: null,
+            github: null,
+          },
+          education: [],
+          experience: [],
+          skills: {},
+          metadata: {
+            processedDate: new Date().toISOString(),
+            sourceFile: path.basename(pdfPath),
+            provider: 'failed',
+            model: 'fallback',
+            error: error.message || 'Unknown error',
+          },
+        }
+
+        // If the result is a string (either JSON string or text with JSON embedded), try to parse it
+        if (error.response && typeof error.response === 'string') {
+          try {
+            // Check if the response is a JSON string
+            const jsonData = this.extractJsonFromString(error.response)
+
+            // Merge the extracted data with our fallback data
+            fallbackData.personalInfo = {
+              ...fallbackData.personalInfo,
+              ...jsonData.personalInfo,
+            }
+            fallbackData.education = jsonData.education || []
+            fallbackData.experience = jsonData.experience || []
+            fallbackData.skills = jsonData.skills || {}
+            fallbackData.metadata = {
+              ...fallbackData.metadata,
+              ...this.aiProvider.getModelInfo(),
+            }
+          } catch (jsonError) {
+            console.error(`Error parsing JSON from AI response: ${jsonError}`)
+          }
+        }
+
+        // Calculate accuracy even for partially extracted data
+        const accuracy = this.accuracyCalculator.calculateAccuracy(fallbackData)
+        fallbackData.accuracy = accuracy
+
+        return fallbackData
+      }
+    } catch (error: any) {
+      console.error(`Critical error in CV processing: ${error}`)
+
+      // Return a minimal valid data structure when everything fails
+      const minimalData: CVData = {
+        personalInfo: {
+          name: null,
+          email: null,
+          phone: null,
+          location: null,
+          linkedin: null,
+          github: null,
+        },
+        education: [],
+        experience: [],
+        skills: {},
+        metadata: {
+          processedDate: new Date().toISOString(),
+          sourceFile: path.basename(pdfPath),
+          provider: 'error',
+          model: 'error',
+          error: error.message || 'Critical processing error',
+        },
       }
 
-      throw error
+      // Calculate accuracy
+      const accuracy = this.accuracyCalculator.calculateAccuracy(minimalData)
+      minimalData.accuracy = accuracy
+
+      return minimalData
     }
   }
 

@@ -59,6 +59,7 @@ export interface CVData {
     sourceFile: string
     model?: string
     provider?: string
+    error?: string // Add optional error property
   }
 }
 

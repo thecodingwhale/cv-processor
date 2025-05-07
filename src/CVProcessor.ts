@@ -35,7 +35,7 @@ export class CVProcessor {
     this.skillsExtractor = new SkillsExtractor()
     this.accuracyCalculator = new AccuracyCalculator(options)
     this.verbose = options.verbose || false
-    this.minAccuracyThreshold = options.minAccuracyThreshold || 60
+    this.minAccuracyThreshold = options.minAccuracyThreshold || 70
 
     if (this.verbose) {
       console.log('CV Processor initialized')

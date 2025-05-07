@@ -20,13 +20,32 @@ export class AccuracyCalculator {
       experience: options.accuracyWeights?.experience || 0.3,
       skills: options.accuracyWeights?.skills || 0.2,
     }
-    this.minAccuracyThreshold = options.minAccuracyThreshold || 60 // Default 60% minimum threshold
+    this.minAccuracyThreshold = options.minAccuracyThreshold || 70 // Default 70% minimum threshold
   }
 
   /**
    * Calculate accuracy score for the extracted CV data
    */
   calculateAccuracy(cvData: CVData): AccuracyScore {
+    // Ensure all required objects exist
+    if (!cvData.personalInfo)
+      cvData.personalInfo = {
+        name: null,
+        email: null,
+        phone: null,
+        location: null,
+        linkedin: null,
+        github: null,
+      }
+    if (!cvData.education) cvData.education = []
+    if (!cvData.experience) cvData.experience = []
+    if (!cvData.skills) cvData.skills = {}
+    if (!cvData.metadata)
+      cvData.metadata = {
+        processedDate: new Date().toISOString(),
+        sourceFile: 'unknown',
+      }
+
     const missingFields: string[] = []
 
     // Calculate scores for each section
@@ -87,6 +106,12 @@ export class AccuracyCalculator {
     personalInfo: CVData['personalInfo'],
     missingFields: string[]
   ): number {
+    // Ensure personalInfo object exists
+    if (!personalInfo) {
+      missingFields.push('personalInfo')
+      return 0
+    }
+
     let score = 0
     let totalFields = 0
 
@@ -248,6 +273,12 @@ export class AccuracyCalculator {
     skills: CVData['skills'],
     missingFields: string[]
   ): number {
+    // Ensure skills object exists
+    if (!skills) {
+      missingFields.push('skills')
+      return 0
+    }
+
     let score = 0
     const skillSections: Array<keyof typeof skills> = [
       'programmingLanguages',
@@ -312,11 +343,11 @@ export class AccuracyCalculator {
 
     // Education fields (per entry)
     const eduFieldsPerEntry = 7
-    count += cvData.education.length * eduFieldsPerEntry
+    count += (cvData.education || []).length * eduFieldsPerEntry
 
     // Experience fields (per entry)
     const expFieldsPerEntry = 6
-    count += cvData.experience.length * expFieldsPerEntry
+    count += (cvData.experience || []).length * expFieldsPerEntry
 
     // Skills sections
     count += 5
@@ -332,7 +363,7 @@ export class AccuracyCalculator {
     let confidence = 0.8 // Start with a base confidence
 
     // Reduce confidence for AI-extracted data (less verifiable)
-    if (cvData.metadata.provider?.toLowerCase().includes('ai')) {
+    if (cvData.metadata?.provider?.toLowerCase().includes('ai')) {
       confidence *= 0.9
     }
 
@@ -354,7 +385,7 @@ export class AccuracyCalculator {
    */
   private hasConsistentDates(cvData: CVData): boolean {
     // Check education dates
-    for (const edu of cvData.education) {
+    for (const edu of cvData.education || []) {
       if (edu.startDate && edu.endDate) {
         const start = new Date(edu.startDate)
         const end = new Date(edu.endDate)
@@ -366,7 +397,7 @@ export class AccuracyCalculator {
     }
 
     // Check experience dates
-    for (const exp of cvData.experience) {
+    for (const exp of cvData.experience || []) {
       if (exp.startDate && exp.endDate) {
         const start = new Date(exp.startDate)
         const end = new Date(exp.endDate)
@@ -385,16 +416,16 @@ export class AccuracyCalculator {
    */
   private hasReasonableDataLengths(cvData: CVData): boolean {
     // Check personal info
-    if (cvData.personalInfo.name && cvData.personalInfo.name.length > 100) {
+    if (cvData.personalInfo?.name && cvData.personalInfo.name.length > 100) {
       return false
     }
 
-    if (cvData.personalInfo.email && cvData.personalInfo.email.length > 100) {
+    if (cvData.personalInfo?.email && cvData.personalInfo.email.length > 100) {
       return false
     }
 
     // Check education
-    for (const edu of cvData.education) {
+    for (const edu of cvData.education || []) {
       if (edu.institution && edu.institution.length > 200) {
         return false
       }
