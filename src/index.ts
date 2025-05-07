@@ -14,7 +14,6 @@ import * as dotenv from 'dotenv'
 import * as fs from 'fs'
 import * as path from 'path'
 import { AICVProcessor } from './AICVProcessor'
-import { CVProcessor } from './CVProcessor'
 import { AIProviderFactory, AIProviderType } from './ai/AIProviderFactory'
 import { AzureOpenAIConfig } from './ai/AzureOpenAIProvider'
 import { AIModelConfig, AIProvider } from './types/AIProvider'
@@ -27,7 +26,7 @@ const program = new Command()
 
 program
   .name('cv-processor-ts')
-  .description('Extract structured data from a CV/resume PDF')
+  .description('Extract structured data from CV/resume PDF')
   .version('1.0.0')
   .argument('<pdf-file>', 'Path to the CV/resume PDF file')
   .option(
@@ -41,7 +40,6 @@ program
     'gemini'
   )
   .option('--ai-model <model>', 'AI model to use (default depends on provider)')
-  .option('--traditional', 'Use traditional non-AI processing')
   .action(async (pdfFile, options) => {
     try {
       // Validate input file
@@ -59,115 +57,106 @@ program
       const startTime = new Date()
       console.log(`Starting CV processing at ${startTime.toISOString()}`)
 
-      if (options.traditional) {
-        // Use traditional processing
-        console.log('Using traditional non-AI processing')
-        const processor = new CVProcessor({ verbose: options.verbose })
-        const cvData = await processor.processCv(pdfFile)
-        processor.saveToJson(cvData, outputFile)
-      } else {
-        // Use AI processing
-        const providerType = options.useAi as AIProviderType
-        console.log(`Using AI processing with provider: ${providerType}`)
+      // Use AI processing
+      const providerType = options.useAi as AIProviderType
+      console.log(`Using AI processing with provider: ${providerType}`)
 
-        // Get API key from environment variables
-        const apiKeyEnvVar =
-          providerType === 'aws'
-            ? 'AWS_ACCESS_KEY_ID'
-            : `${providerType.toUpperCase()}_API_KEY`
-        const apiKey = process.env[apiKeyEnvVar]
+      // Get API key from environment variables
+      const apiKeyEnvVar =
+        providerType === 'aws'
+          ? 'AWS_ACCESS_KEY_ID'
+          : `${providerType.toUpperCase()}_API_KEY`
+      const apiKey = process.env[apiKeyEnvVar]
 
-        if (!apiKey) {
+      if (!apiKey) {
+        console.error(
+          `Error: API key not found in environment variables (${apiKeyEnvVar})`
+        )
+        console.error('Please set it in your .env file or environment')
+        process.exit(1)
+      }
+
+      // Configure AI model
+      let aiConfig: AIModelConfig | AzureOpenAIConfig = {
+        apiKey,
+        model: options.aiModel || getDefaultModelForProvider(providerType),
+      }
+
+      // Add Azure OpenAI specific configuration
+      if (providerType === 'azure') {
+        const endpoint = process.env.AZURE_OPENAI_ENDPOINT
+        if (!endpoint) {
           console.error(
-            `Error: API key not found in environment variables (${apiKeyEnvVar})`
+            'Error: AZURE_OPENAI_ENDPOINT not found in environment variables'
           )
           console.error('Please set it in your .env file or environment')
           process.exit(1)
         }
 
-        // Configure AI model
-        let aiConfig: AIModelConfig | AzureOpenAIConfig = {
-          apiKey,
-          model: options.aiModel || getDefaultModelForProvider(providerType),
+        const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME
+
+        // Set sensible defaults for Azure OpenAI config
+        aiConfig = {
+          ...aiConfig,
+          endpoint,
+          apiVersion:
+            process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview',
+          deploymentName,
+        } as AzureOpenAIConfig
+
+        // For deployments like o3-mini that don't support temperature
+        if (
+          deploymentName &&
+          (deploymentName.includes('mini') || deploymentName.includes('o3'))
+        ) {
+          console.log(
+            `Using model-specific configuration for ${deploymentName}`
+          )
+          delete (aiConfig as any).temperature
         }
-
-        // Add Azure OpenAI specific configuration
-        if (providerType === 'azure') {
-          const endpoint = process.env.AZURE_OPENAI_ENDPOINT
-          if (!endpoint) {
-            console.error(
-              'Error: AZURE_OPENAI_ENDPOINT not found in environment variables'
-            )
-            console.error('Please set it in your .env file or environment')
-            process.exit(1)
-          }
-
-          const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME
-
-          // Set sensible defaults for Azure OpenAI config
-          aiConfig = {
-            ...aiConfig,
-            endpoint,
-            apiVersion:
-              process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview',
-            deploymentName,
-          } as AzureOpenAIConfig
-
-          // For deployments like o3-mini that don't support temperature
-          if (
-            deploymentName &&
-            (deploymentName.includes('mini') || deploymentName.includes('o3'))
-          ) {
-            console.log(
-              `Using model-specific configuration for ${deploymentName}`
-            )
-            delete (aiConfig as any).temperature
-          }
-        }
-        // Add AWS Bedrock specific configuration
-        else if (providerType === 'aws') {
-          // AWS credentials can come from environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
-          // or from the ~/.aws/credentials file
-
-          const region =
-            process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION
-
-          // Check for inference profile ARN
-          if (process.env.AWS_BEDROCK_INFERENCE_PROFILE_ARN) {
-            console.log(
-              `Using AWS Bedrock inference profile: ${process.env.AWS_BEDROCK_INFERENCE_PROFILE_ARN}`
-            )
-          } else if (options.aiModel && options.aiModel.includes('nova')) {
-            console.warn(
-              'Warning: Nova models may require an inference profile ARN'
-            )
-            console.warn(
-              'Set AWS_BEDROCK_INFERENCE_PROFILE_ARN environment variable'
-            )
-          }
-
-          // Set sensible defaults for AWS Bedrock config
-          aiConfig = {
-            apiKey, // Pass through the API key we already retrieved
-            model: options.aiModel || getDefaultModelForProvider(providerType),
-            region: region || 'us-east-1',
-          } as unknown as AIModelConfig
-
-          console.log(`Using AWS Bedrock with model: ${aiConfig.model}`)
-        }
-
-        // Create AI provider and processor
-        const aiProvider = AIProviderFactory.createProvider(
-          providerType,
-          aiConfig
-        )
-        const processor = new AICVProcessor(aiProvider, {
-          verbose: options.verbose,
-        })
-
-        const cvData = await processor.processCv(pdfFile)
-        processor.saveToJson(cvData, outputFile)
       }
+      // Add AWS Bedrock specific configuration
+      else if (providerType === 'aws') {
+        // AWS credentials can come from environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+        // or from the ~/.aws/credentials file
+
+        const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION
+
+        // Check for inference profile ARN
+        if (process.env.AWS_BEDROCK_INFERENCE_PROFILE_ARN) {
+          console.log(
+            `Using AWS Bedrock inference profile: ${process.env.AWS_BEDROCK_INFERENCE_PROFILE_ARN}`
+          )
+        } else if (options.aiModel && options.aiModel.includes('nova')) {
+          console.warn(
+            'Warning: Nova models may require an inference profile ARN'
+          )
+          console.warn(
+            'Set AWS_BEDROCK_INFERENCE_PROFILE_ARN environment variable'
+          )
+        }
+
+        // Set sensible defaults for AWS Bedrock config
+        aiConfig = {
+          apiKey, // Pass through the API key we already retrieved
+          model: options.aiModel || getDefaultModelForProvider(providerType),
+          region: region || 'us-east-1',
+        } as unknown as AIModelConfig
+
+        console.log(`Using AWS Bedrock with model: ${aiConfig.model}`)
+      }
+
+      // Create AI provider and processor
+      const aiProvider = AIProviderFactory.createProvider(
+        providerType,
+        aiConfig
+      )
+      const processor = new AICVProcessor(aiProvider, {
+        verbose: options.verbose,
+      })
+
+      const cvData = await processor.processCv(pdfFile)
+      processor.saveToJson(cvData, outputFile)
 
       const processingTime = (new Date().getTime() - startTime.getTime()) / 1000
       console.log(
@@ -207,17 +196,8 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
   }
 }
 
-// Define a mock interface for dynamic imports
-interface OpenAIProviderModule {
-  OpenAIProvider: new () => AIProvider
-}
-
-interface GeminiProviderModule {
-  GeminiProvider: new () => AIProvider
-}
-
 /**
- * Process a CV using traditional methods and AI methods (if API keys available)
+ * Process a CV using AI methods (if API keys available)
  */
 async function processCv(
   pdfPath: string,
@@ -239,44 +219,6 @@ async function processCv(
   console.log('Starting CV Processing')
 
   try {
-    // Traditional processor (rule-based)
-    const traditionalProcessor = new CVProcessor({
-      verbose: options.verbose,
-      minAccuracyThreshold: options.minAccuracyThreshold,
-      accuracyWeights: options.accuracyWeights,
-    })
-
-    const traditionalResults = await traditionalProcessor.processCv(pdfPath)
-
-    // Log accuracy information
-    console.log('\n--- Traditional Processing Results ---')
-    if (traditionalResults.accuracy) {
-      console.log(`Accuracy Score: ${traditionalResults.accuracy.score}%`)
-      console.log(`Completeness: ${traditionalResults.accuracy.completeness}%`)
-      console.log(`Confidence: ${traditionalResults.accuracy.confidence}%`)
-
-      if (traditionalResults.accuracy.missingFields.length > 0) {
-        console.log(
-          'Missing Fields:',
-          traditionalResults.accuracy.missingFields.slice(0, 5),
-          traditionalResults.accuracy.missingFields.length > 5
-            ? `(and ${
-                traditionalResults.accuracy.missingFields.length - 5
-              } more...)`
-            : ''
-        )
-      }
-
-      if (!traditionalProcessor.meetsAccuracyThreshold(traditionalResults)) {
-        console.warn(
-          `This CV doesn't meet the minimum accuracy threshold (${options.minAccuracyThreshold}%)`
-        )
-      }
-    }
-
-    // Save traditional results
-    traditionalProcessor.saveToJson(traditionalResults, options.outputPath)
-
     const aiResults: Array<{ provider: string; results: any }> = []
 
     // OpenAI processor
@@ -324,7 +266,7 @@ async function processCv(
 
           if (!openAIProcessor.meetsAccuracyThreshold(openaiResults)) {
             console.warn(
-              `This CV doesn't meet the minimum accuracy threshold (${options.minAccuracyThreshold}%)`
+              `CV does not meet minimum accuracy threshold of ${options.minAccuracyThreshold}%`
             )
           }
         }
@@ -446,7 +388,7 @@ async function processCv(
 
           if (!geminiProcessor.meetsAccuracyThreshold(geminiResults)) {
             console.warn(
-              `This CV doesn't meet the minimum accuracy threshold (${options.minAccuracyThreshold}%)`
+              `CV does not meet minimum accuracy threshold of ${options.minAccuracyThreshold}%`
             )
           }
         }
@@ -463,9 +405,6 @@ async function processCv(
     // Compare results accuracy
     if (aiResults.length > 0) {
       console.log('\n--- Accuracy Comparison ---')
-      console.log(
-        `Traditional: ${traditionalResults.accuracy?.score || 'N/A'}%`
-      )
 
       aiResults.forEach((result) => {
         console.log(
@@ -474,8 +413,8 @@ async function processCv(
       })
 
       // Find the most accurate result
-      let bestProvider = 'Traditional'
-      let bestScore = traditionalResults.accuracy?.score || 0
+      let bestProvider = aiResults[0].provider
+      let bestScore = aiResults[0].results.accuracy?.score || 0
 
       aiResults.forEach((result) => {
         const score = result.results.accuracy?.score || 0
@@ -491,7 +430,31 @@ async function processCv(
     }
 
     console.log('\nAll processing completed successfully.')
-    return traditionalResults
+
+    // Return the best result if available, otherwise the first result
+    if (aiResults.length > 0) {
+      return aiResults[0].results
+    }
+
+    // Return empty data if no results
+    return {
+      personalInfo: {
+        name: null,
+        email: null,
+        phone: null,
+        location: null,
+        linkedin: null,
+        github: null,
+      },
+      education: [],
+      experience: [],
+      skills: {},
+      metadata: {
+        processedDate: new Date().toISOString(),
+        sourceFile: path.basename(pdfPath),
+        error: 'No AI providers were able to process this CV',
+      },
+    }
   } catch (error) {
     console.error('Error in CV processing:', error)
     throw error
@@ -517,7 +480,7 @@ async function main() {
 
     const outputPath = path.resolve(outputDir, 'cv_data.json')
 
-    // Process the CV with different options
+    // Process the CV with different AI options
     await processCv(pdfPath, {
       useOpenAI: true,
       useGemini: true,

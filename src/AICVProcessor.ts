@@ -1,8 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { AISkillsExtractor } from './extractors/AISkillsExtractor'
 import { AITextExtractor } from './extractors/AITextExtractor'
-import { SectionExtractor } from './extractors/SectionExtractor'
 import { CVData, ProcessorOptions, TokenUsage } from './types'
 import { AIProvider, TokenUsageInfo } from './types/AIProvider'
 import { AccuracyCalculator } from './utils/AccuracyCalculator'
@@ -14,8 +12,7 @@ import { AIPatternExtractor } from './utils/AIPatternExtractor'
 export class AICVProcessor {
   private aiProvider: AIProvider
   private textExtractor: AITextExtractor
-  private sectionExtractor: SectionExtractor
-  private skillsExtractor: AISkillsExtractor
+
   private patternExtractor: AIPatternExtractor
   private accuracyCalculator: AccuracyCalculator
   private verbose: boolean
@@ -34,8 +31,6 @@ export class AICVProcessor {
   constructor(aiProvider: AIProvider, options: ProcessorOptions = {}) {
     this.aiProvider = aiProvider
     this.textExtractor = new AITextExtractor(aiProvider)
-    this.sectionExtractor = new SectionExtractor()
-    this.skillsExtractor = new AISkillsExtractor(aiProvider)
     this.patternExtractor = new AIPatternExtractor(aiProvider)
     this.accuracyCalculator = new AccuracyCalculator(options)
     this.verbose = options.verbose || false
