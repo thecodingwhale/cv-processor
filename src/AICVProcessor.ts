@@ -176,6 +176,7 @@ export class AICVProcessor {
       cvData.metadata = {
         processedDate: new Date().toISOString(),
         sourceFile: path.basename(pdfPath),
+        ...this.aiProvider.getModelInfo(),
       }
 
       return cvData
@@ -190,6 +191,7 @@ export class AICVProcessor {
           jsonData.metadata = {
             processedDate: new Date().toISOString(),
             sourceFile: path.basename(pdfPath),
+            ...this.aiProvider.getModelInfo(),
           }
           return jsonData
         } catch (jsonError) {
@@ -241,8 +243,27 @@ export class AICVProcessor {
    */
   saveToJson(cvData: CVData, outputPath: string): void {
     try {
-      fs.writeFileSync(outputPath, JSON.stringify(cvData, null, 2))
-      console.log(`Results saved to ${outputPath}`)
+      // Generate a filename that includes provider, model, and timestamp
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/:/g, '-')
+        .replace(/\./g, '-')
+      const providerName = cvData.metadata?.provider || 'unknown'
+      const modelName = cvData.metadata?.model || 'unknown'
+
+      // Extract base path and extension
+      const outputDir = path.dirname(outputPath)
+      const outputBaseName = path.basename(outputPath, path.extname(outputPath))
+      const outputExt = path.extname(outputPath)
+
+      // Create filename with provider, model, and timestamp
+      const newOutputPath = path.join(
+        outputDir,
+        `${outputBaseName}_${providerName}_${modelName}_${timestamp}${outputExt}`
+      )
+
+      fs.writeFileSync(newOutputPath, JSON.stringify(cvData, null, 2))
+      console.log(`Results saved to ${newOutputPath}`)
     } catch (error) {
       console.error(`Error saving JSON file: ${error}`)
       throw error

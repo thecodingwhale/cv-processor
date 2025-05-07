@@ -208,4 +208,11 @@ export class OpenAIProvider implements AIProvider {
       throw error
     }
   }
+
+  getModelInfo(): { provider: string; model: string } {
+    return {
+      provider: 'openai',
+      model: this.config.model || 'gpt-4o',
+    }
+  }
 }

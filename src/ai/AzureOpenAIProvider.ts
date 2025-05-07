@@ -314,4 +314,11 @@ export class AzureOpenAIProvider implements AIProvider {
       throw error
     }
   }
+
+  getModelInfo(): { provider: string; model: string } {
+    return {
+      provider: 'azure',
+      model: this.config.deploymentName || this.config.model,
+    }
+  }
 }

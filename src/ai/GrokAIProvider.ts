@@ -243,4 +243,11 @@ export class GrokAIProvider implements AIProvider {
       throw error
     }
   }
+
+  getModelInfo(): { provider: string; model: string } {
+    return {
+      provider: 'grok',
+      model: this.config.model || 'grok-3-mini-beta',
+    }
+  }
 }

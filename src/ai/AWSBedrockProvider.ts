@@ -500,4 +500,11 @@ export class AWSBedrockProvider implements AIProvider {
       throw error
     }
   }
+
+  getModelInfo(): { provider: string; model: string } {
+    return {
+      provider: 'aws',
+      model: this.config.model || 'apac.amazon.nova-micro-v1:0',
+    }
+  }
 }

@@ -107,4 +107,11 @@ export class GeminiAIProvider implements AIProvider {
       throw error
     }
   }
+
+  getModelInfo(): { provider: string; model: string } {
+    return {
+      provider: 'gemini',
+      model: this.config.model || 'gemini-1.5-pro',
+    }
+  }
 }

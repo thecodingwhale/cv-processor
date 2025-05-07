@@ -43,6 +43,8 @@ export interface CVData {
   metadata: {
     processedDate: string
     sourceFile: string
+    model?: string
+    provider?: string
   }
 }
 
