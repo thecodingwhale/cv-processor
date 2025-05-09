@@ -4,7 +4,6 @@ import { AITextExtractor } from './extractors/AITextExtractor'
 import { CVData, ProcessorOptions, TokenUsage } from './types'
 import { AIProvider, TokenUsageInfo } from './types/AIProvider'
 import { AccuracyCalculator } from './utils/AccuracyCalculator'
-import { AIPatternExtractor } from './utils/AIPatternExtractor'
 import { NullBasedAccuracyCalculator } from './utils/NullBasedAccuracyCalculator'
 
 // Define the type for accuracy calculator
@@ -16,8 +15,6 @@ type AccuracyCalculatorType = 'traditional' | 'null-based'
 export class AICVProcessor {
   private aiProvider: AIProvider
   private textExtractor: AITextExtractor
-
-  private patternExtractor: AIPatternExtractor
   private accuracyCalculator: AccuracyCalculator | NullBasedAccuracyCalculator
   private verbose: boolean
   private minAccuracyThreshold: number
@@ -27,7 +24,7 @@ export class AICVProcessor {
     totalTokens: 0,
     estimatedCost: 0,
   }
-  private industryContext: string // Store industry context for patterns
+  // private industryContext: string // Store industry context for patterns
 
   /**
    * Initialize the AI CV processor
@@ -40,7 +37,6 @@ export class AICVProcessor {
   ) {
     this.aiProvider = aiProvider
     this.textExtractor = new AITextExtractor(aiProvider)
-    this.patternExtractor = new AIPatternExtractor(aiProvider)
 
     // Initialize the appropriate accuracy calculator
     if (options.accuracyCalculatorType === 'null-based') {
@@ -48,10 +44,8 @@ export class AICVProcessor {
     } else {
       this.accuracyCalculator = new AccuracyCalculator(options)
     }
-
     this.verbose = options.verbose || false
     this.minAccuracyThreshold = options.minAccuracyThreshold || 70
-    this.industryContext = options.industryContext || 'film and television'
 
     if (this.verbose) {
       console.log('AI CV Processor initialized')
@@ -79,80 +73,13 @@ export class AICVProcessor {
       // Track token usage from text extraction if available
       this.addTokenUsageFromResponse(this.textExtractor.getTokenUsage())
 
-      // Get industry-specific patterns if not using static patterns
-      if (this.verbose) {
-        console.log(
-          `Extracting industry-specific patterns for: ${this.industryContext}`
-        )
-      }
-      const patterns = await this.patternExtractor.extractPatterns(
-        text,
-        this.industryContext
-      )
-
       // Track token usage from pattern extraction
-      this.addTokenUsageFromResponse(this.patternExtractor.getTokenUsage())
+      this.addTokenUsageFromResponse(this.textExtractor.getTokenUsage())
 
       // Define the data schema to match our CVData type
       const dataSchema = {
         type: 'object',
         properties: {
-          personalInfo: {
-            type: 'object',
-            properties: {
-              name: { type: 'string' },
-              email: { type: 'string' },
-              phone: { type: 'string' },
-              location: { type: 'string' },
-              website: { type: 'string' }, // actor portfolio or IMDb link
-              instagram: { type: 'string' }, // common for actors/models
-              representation: {
-                type: 'object',
-                properties: {
-                  agency: { type: 'string' },
-                  agentName: { type: 'string' },
-                  agentContact: { type: 'string' },
-                },
-              },
-              unionAffiliations: {
-                type: 'array',
-                items: { type: 'string' }, // e.g., ['SAG-AFTRA', 'AEA']
-              },
-              summary: { type: 'string' }, // short bio / acting profile
-            },
-          },
-          media: {
-            type: 'object',
-            properties: {
-              headshots: {
-                type: 'array',
-                items: { type: 'string' }, // image URLs
-              },
-              demoReels: {
-                type: 'array',
-                items: { type: 'string' }, // video URLs
-              },
-              voiceReels: {
-                type: 'array',
-                items: { type: 'string' }, // for voice actors
-              },
-            },
-          },
-          training: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                institution: { type: 'string' },
-                program: { type: 'string' },
-                coachOrMentor: { type: 'string' },
-                focus: { type: 'string' }, // e.g., Meisner, On-Camera, Voice
-                startDate: { type: 'string' },
-                endDate: { type: 'string' },
-                location: { type: 'string' },
-              },
-            },
-          },
           credits: {
             type: 'array',
             items: {
@@ -169,80 +96,78 @@ export class AICVProcessor {
               },
             },
           },
-          skills: {
-            type: 'object',
-            properties: {
-              performanceSkills: {
-                type: 'array',
-                items: { type: 'string' }, // e.g., 'Improvisation', 'Stage Combat'
-              },
-              accentsDialects: {
-                type: 'array',
-                items: { type: 'string' },
-              },
-              languages: {
-                type: 'array',
-                items: { type: 'string' },
-              },
-              instruments: {
-                type: 'array',
-                items: { type: 'string' },
-              },
-              dance: {
-                type: 'array',
-                items: { type: 'string' },
-              },
-              certifications: {
-                type: 'array',
-                items: { type: 'string' }, // e.g., 'Stage Combat Certified'
-              },
-              softSkills: {
-                type: 'array',
-                items: { type: 'string' }, // e.g., 'Team player', 'Takes direction well'
-              },
-            },
-          },
-          physicalAttributes: {
-            type: 'object',
-            properties: {
-              height: { type: 'string' },
-              weight: { type: 'string' },
-              hairColor: { type: 'string' },
-              eyeColor: { type: 'string' },
-              bodyType: { type: 'string' },
-              clothing: {
-                type: 'object',
-                properties: {
-                  shirt: { type: 'string' },
-                  pants: { type: 'string' },
-                  dress: { type: 'string' },
-                  shoe: { type: 'string' },
-                  suit: { type: 'string' },
-                },
-              },
-            },
-          },
         },
       }
 
       // Create a prompt that incorporates industry context and any patterns detected
       const instructions = `
-        You are a CV parser specializing in the ${this.industryContext} industry.
-        
-        Analyze the provided CV/resume and extract structured information for a talent/performer.
-        
-        Focus on:
-        1. Personal information and representation (agent, manager, etc.)
-        2. Media links (demo reels, headshots, etc.)
-        3. Credits/experience in film, TV, commercials, theater, etc.
-        4. Training and education
-        5. Skills relevant to performance (acting styles, dialects, instruments, etc.)
-        6. Physical attributes (height, measurements, etc.)
-        
-        Structure the data according to the provided JSON schema and ensure all fields are correctly populated.
-        If information is not found, use null for string fields and empty arrays for arrays.
-        
-        IMPORTANT: Return ONLY the JSON object, with no additional text or markdown formatting.
+        You are an AI data extractor for an actor's resume system. I will provide you the full text of an actor's resume (from PDF). Your task is to extract and convert the credits into a structured JSON object matching this schema:
+
+        {
+          "resume": [
+            {
+              "category": "<Category>", // MUST be one of these official categories
+              "category_id": "<UUIDv4>", // always generate a new UUIDv4 for each unique category
+              "credits": [
+                {
+                  "id": "<UUIDv4>", // always generate a new UUIDv4 for each credit
+                  "year": "YYYY",
+                  "title": "<Title of Production>",
+                  "role": "<Role>",
+                  "director": "<Director Name>",
+                  "attached_media": [] // leave as empty array
+                }
+              ]
+            },
+            ...
+          ],
+          "resume_show_years": true
+        }
+
+        ✅ Official allowed categories:
+        ["Commercial", "Film", "Television", "Theatre", "Print / Fashion", "Training", "Voice", "Stunt", "Corporate", "MC/Presenting", "Extras", "Other"]
+
+        Categorization rules:
+
+        - Only classify credits under these official categories.
+        - Map synonyms, similar phrases, and related wording **logically to the closest matching official category.** For example:
+          (e.g., "Voice Over" → "Voice", "Feature Film" → "Film", "Stage" → "Theatre", "Presenter" → "MC/Presenting")
+        - Always prioritize semantic meaning over literal wording.
+        - If a credit cannot be confidently mapped → assign it under "Other".
+        - Never invent a new category outside the official list.
+
+        ✅ Extraction rules:
+
+        - Extract **only credits (roles and productions)** → ignore sections like Profile, Notes, Skills, Memberships.
+        - Group credits under their respective categories.
+        - Each unique category must have its own unique 'category_id' (UUIDv4).
+        - Each credit must have its own unique 'id' (UUIDv4).
+        - If director name is missing → set '"director": ""'.
+        - Remove duplicate credits.
+        - Keep credits **grouped by category** and in chronological order (if possible).
+        - Do not include empty categories (categories with no credits).
+
+        Example input from resume:
+        2023
+        Voice Over Narrator Aussie Truck Rehab Discovery Channel Roger Power
+
+        Expected output:
+        {
+        "category": "Voice",
+        "category_id": "f70d3ec4-3e90-4238-b129-032de7f0aa9d",
+        "credits": [
+        {
+        "id": "b493c51b-7fbd-4f6a-83d7-5f4238f7ee4a",
+        "year": "2023",
+        "title": "Aussie Truck Rehab",
+        "role": "Narrator",
+        "director": "Roger Power",
+        "attached_media": []
+        }
+        ]
+        }
+
+        ✅ Final output: a **single JSON object following the schema**, containing all credits grouped per category, all IDs generated as UUIDv4.
       `
 
       try {
@@ -341,7 +266,6 @@ export class AICVProcessor {
    */
   private addTokenUsageFromResponse(usage?: TokenUsageInfo): void {
     if (!usage) return
-
     this.tokenUsage.promptTokens += usage.promptTokens || 0
     this.tokenUsage.completionTokens += usage.completionTokens || 0
     this.tokenUsage.totalTokens += usage.totalTokens || 0
