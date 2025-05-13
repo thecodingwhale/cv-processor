@@ -36,8 +36,7 @@ program
   .option('-v, --verbose', 'Verbose output')
   .option(
     '--use-ai [provider]',
-    'Use AI for processing (gemini, openai, azure, grok, aws)',
-    'gemini'
+    'Use AI for processing (gemini, openai, azure, grok, aws)'
   )
   .option('--ai-model <model>', 'AI model to use (default depends on provider)')
   .option(
@@ -193,6 +192,7 @@ if (process.argv.length < 3) {
  * Get the default model name for a given AI provider
  */
 function getDefaultModelForProvider(provider: AIProviderType): string {
+  console.log('getDefaultModelForProvider > provider: ', provider)
   switch (provider) {
     case 'gemini':
       return 'gemini-1.5-pro'
@@ -208,146 +208,3 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
       return 'gemini-1.5-pro'
   }
 }
-
-/**
- * Process a CV using AI methods (if API keys available)
- */
-async function processCv(
-  pdfPath: string,
-  options = {
-    verbose: false,
-    outputPath: './output.json',
-    minAccuracyThreshold: 75, // Default threshold for acceptable accuracy
-    accuracyWeights: {
-      // Custom weights for different sections
-      personalInfo: 0.3,
-      education: 0.25,
-      experience: 0.3,
-      skills: 0.15,
-    },
-    accuracyCalculatorType: 'traditional' as 'traditional' | 'null-based',
-  }
-) {
-  console.log('Starting CV Processing')
-  console.log(`Using ${options.accuracyCalculatorType} accuracy calculator`)
-
-  try {
-    // Use the default provider (based on CLI args or environment vars)
-    const defaultProvider = process.env.DEFAULT_AI_PROVIDER || 'gemini'
-    let apiProviderType: AIProviderType = defaultProvider as AIProviderType
-
-    // Get API key from environment variables
-    const apiKeyEnvVar =
-      apiProviderType === 'aws'
-        ? 'AWS_ACCESS_KEY_ID'
-        : `${apiProviderType.toUpperCase()}_API_KEY`
-    const apiKey = process.env[apiKeyEnvVar]
-
-    if (!apiKey) {
-      console.error(
-        `Error: API key not found in environment variables (${apiKeyEnvVar})`
-      )
-      console.error('Please set it in your .env file or environment')
-      throw new Error(`Missing API key for provider: ${apiProviderType}`)
-    }
-
-    // Configure AI provider
-    let aiConfig: AIModelConfig = {
-      apiKey,
-      model: getDefaultModelForProvider(apiProviderType),
-    }
-
-    const aiProvider = AIProviderFactory.createProvider(
-      apiProviderType,
-      aiConfig
-    )
-
-    const processor = new AICVProcessor(aiProvider, {
-      verbose: options.verbose,
-      minAccuracyThreshold: options.minAccuracyThreshold,
-      accuracyWeights: options.accuracyWeights,
-      accuracyCalculatorType: options.accuracyCalculatorType,
-    })
-
-    const results = await processor.processCv(pdfPath)
-
-    // Log accuracy information
-    console.log(`\n--- Processing Results (${apiProviderType}) ---`)
-    if (results.accuracy) {
-      console.log(`Accuracy Score: ${results.accuracy.score}%`)
-      console.log(`Completeness: ${results.accuracy.completeness}%`)
-      console.log(`Confidence: ${results.accuracy.confidence}%`)
-
-      if (results.accuracy.missingFields.length > 0) {
-        console.log(
-          'Missing Fields:',
-          results.accuracy.missingFields.slice(0, 5),
-          results.accuracy.missingFields.length > 5
-            ? `(and ${results.accuracy.missingFields.length - 5} more...)`
-            : ''
-        )
-      }
-
-      if (!processor.meetsAccuracyThreshold(results)) {
-        console.warn(
-          `CV does not meet minimum accuracy threshold of ${options.minAccuracyThreshold}%`
-        )
-      }
-    }
-
-    // Save results
-    processor.saveToJson(results, options.outputPath)
-    console.log('\nProcessing completed successfully.')
-
-    return results
-  } catch (error) {
-    console.error('Error in CV processing:', error)
-    throw error
-  }
-}
-
-/**
- * Main function
- */
-async function main() {
-  try {
-    // Check for required directories
-    const outputDir = path.resolve(__dirname, '../output')
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir)
-    }
-
-    // Get PDF path from command line arguments or use default
-    const pdfPath = process.argv[2] || path.resolve(__dirname, '../test.pdf')
-    if (!fs.existsSync(pdfPath)) {
-      throw new Error(`PDF file not found: ${pdfPath}`)
-    }
-
-    const outputPath = path.resolve(outputDir, 'cv_data.json')
-
-    // Process the CV with different AI options
-    await processCv(pdfPath, {
-      verbose: true,
-      outputPath,
-      minAccuracyThreshold: 70, // Set minimum accuracy to 70%
-      accuracyWeights: {
-        personalInfo: 0.3, // Higher weight for personal info
-        education: 0.2,
-        experience: 0.35, // Higher weight for experience
-        skills: 0.15,
-      },
-      accuracyCalculatorType: 'null-based', // Use the null-based calculator
-    })
-  } catch (error) {
-    console.error('Error:', error)
-    process.exit(1)
-  }
-}
-
-// Run the main function
-if (require.main === module) {
-  main()
-}
-
-// Export for use in other modules
-export { processCv }
