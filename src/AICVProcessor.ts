@@ -1,10 +1,10 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { AITextExtractor } from './extractors/AITextExtractor'
 import { CVData, ProcessorOptions, TokenUsage } from './types'
 import { AIProvider, TokenUsageInfo } from './types/AIProvider'
 import { AccuracyCalculator } from './utils/AccuracyCalculator'
 import { NullBasedAccuracyCalculator } from './utils/NullBasedAccuracyCalculator'
+import { convertPdfToImages } from './utils/document'
 
 // Define the type for accuracy calculator
 type AccuracyCalculatorType = 'traditional' | 'null-based'
@@ -14,7 +14,7 @@ type AccuracyCalculatorType = 'traditional' | 'null-based'
  */
 export class AICVProcessor {
   private aiProvider: AIProvider
-  private textExtractor: AITextExtractor
+
   private accuracyCalculator: AccuracyCalculator | NullBasedAccuracyCalculator
   private verbose: boolean
   private minAccuracyThreshold: number
@@ -36,7 +36,6 @@ export class AICVProcessor {
     } = {}
   ) {
     this.aiProvider = aiProvider
-    this.textExtractor = new AITextExtractor(aiProvider)
 
     // Initialize the appropriate accuracy calculator
     if (options.accuracyCalculatorType === 'null-based') {
@@ -67,14 +66,7 @@ export class AICVProcessor {
       // Reset token usage for this processing job
       this.resetTokenUsage()
 
-      // Extract text from PDF using AI
-      const text = await this.textExtractor.extractTextFromPDF(pdfPath)
-
-      // Track token usage from text extraction if available
-      this.addTokenUsageFromResponse(this.textExtractor.getTokenUsage())
-
-      // Track token usage from pattern extraction
-      this.addTokenUsageFromResponse(this.textExtractor.getTokenUsage())
+      const imageUrls = await convertPdfToImages(pdfPath)
 
       // Define the data schema to match our CVData type
       const dataSchema = {
@@ -173,7 +165,7 @@ export class AICVProcessor {
       try {
         // Use AI to extract structured data
         const cvData = await this.aiProvider.extractStructuredData<CVData>(
-          text,
+          imageUrls,
           dataSchema,
           instructions
         )

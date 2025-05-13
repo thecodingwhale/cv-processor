@@ -23,15 +23,10 @@ export interface AIResponseFormat {
 
 export interface AIProvider {
   /**
-   * Process text using the AI model
-   */
-  processText(text: string, prompt: string): Promise<AIResponseFormat>
-
-  /**
    * Extract structured data from text using the AI model
    */
   extractStructuredData<T>(
-    text: string,
+    imageUrls: string[],
     dataSchema: object,
     instructions: string
   ): Promise<T & { tokenUsage?: TokenUsageInfo }>
