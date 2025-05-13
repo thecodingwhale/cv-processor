@@ -201,7 +201,7 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
     case 'azure':
       return 'gpt-4o' // Or the deployment name will be used
     case 'grok':
-      return 'grok-3-mini-beta'
+      return 'grok-2-vision-1212'
     case 'aws':
       return 'apac.amazon.nova-micro-v1:0' // May need inference profile ARN
     default:
