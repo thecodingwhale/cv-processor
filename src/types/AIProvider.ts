@@ -32,11 +32,6 @@ export interface AIProvider {
   ): Promise<T & { tokenUsage?: TokenUsageInfo }>
 
   /**
-   * Process PDF directly using the AI model (if supported)
-   */
-  processPDF?(pdfPath: string, prompt: string): Promise<AIResponseFormat>
-
-  /**
    * Get model information
    */
   getModelInfo(): { provider: string; model: string }

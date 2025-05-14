@@ -1,58 +1,26 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { CVData, ProcessorOptions, TokenUsage } from './types'
-import { AIProvider, TokenUsageInfo } from './types/AIProvider'
-import { AccuracyCalculator } from './utils/AccuracyCalculator'
-import { NullBasedAccuracyCalculator } from './utils/NullBasedAccuracyCalculator'
+import { CVData, ProcessorOptions } from './types'
+import { AIProvider } from './types/AIProvider'
 import { convertPdfToImages } from './utils/document'
-
-// Define the type for accuracy calculator
-type AccuracyCalculatorType = 'traditional' | 'null-based'
 
 /**
  * AI-powered CV Processor class to extract structured data from PDF resumes
  */
 export class AICVProcessor {
   private aiProvider: AIProvider
-
-  private accuracyCalculator: AccuracyCalculator | NullBasedAccuracyCalculator
   private verbose: boolean
-  private minAccuracyThreshold: number
-  private tokenUsage: TokenUsage = {
-    promptTokens: 0,
-    completionTokens: 0,
-    totalTokens: 0,
-    estimatedCost: 0,
-  }
+
   // private industryContext: string // Store industry context for patterns
 
   /**
    * Initialize the AI CV processor
    */
-  constructor(
-    aiProvider: AIProvider,
-    options: ProcessorOptions & {
-      accuracyCalculatorType?: AccuracyCalculatorType
-    } = {}
-  ) {
+  constructor(aiProvider: AIProvider, options: ProcessorOptions = {}) {
     this.aiProvider = aiProvider
-
-    // Initialize the appropriate accuracy calculator
-    if (options.accuracyCalculatorType === 'null-based') {
-      this.accuracyCalculator = new NullBasedAccuracyCalculator(options)
-    } else {
-      this.accuracyCalculator = new AccuracyCalculator(options)
-    }
     this.verbose = options.verbose || false
-    this.minAccuracyThreshold = options.minAccuracyThreshold || 70
-
     if (this.verbose) {
       console.log('AI CV Processor initialized')
-      console.log(
-        `Using ${
-          options.accuracyCalculatorType || 'traditional'
-        } accuracy calculator`
-      )
     }
   }
 
@@ -63,9 +31,6 @@ export class AICVProcessor {
     console.log(`Processing CV with AI: ${pdfPath}`)
 
     try {
-      // Reset token usage for this processing job
-      this.resetTokenUsage()
-
       const imageUrls = await convertPdfToImages(pdfPath)
 
       // Define the data schema to match our CVData type
@@ -170,26 +135,6 @@ export class AICVProcessor {
           instructions
         )
 
-        // Add token usage from the main extraction
-        if (cvData.tokenUsage) {
-          this.addTokenUsageFromResponse(cvData.tokenUsage)
-          delete cvData.tokenUsage // Remove it from the cvData as we'll add our aggregated version
-        }
-
-        // Create default objects if any are missing
-        if (!cvData.personalInfo)
-          cvData.personalInfo = {
-            name: null,
-            email: null,
-            phone: null,
-            location: null,
-            linkedin: null,
-            github: null,
-          }
-        if (!cvData.education) cvData.education = []
-        if (!cvData.experience) cvData.experience = []
-        if (!cvData.skills) cvData.skills = {}
-
         // Add metadata
         cvData.metadata = {
           processedDate: new Date().toISOString(),
@@ -197,91 +142,15 @@ export class AICVProcessor {
           ...this.aiProvider.getModelInfo(),
         }
 
-        // Add token usage information to the result
-        cvData.tokenUsage = this.getTokenUsage()
-
-        // NOTE: Accuracy calculation moved to saveToJson method
-        // to ensure it's calculated on the final processed data
-
         return cvData
       } catch (error) {
-        if (this.verbose) {
-          console.error('Error parsing JSON response:', error)
-        }
-        return {
-          personalInfo: {
-            name: null,
-            email: null,
-            phone: null,
-            location: null,
-            linkedin: null,
-            github: null,
-          },
-          education: [],
-          experience: [],
-          skills: {},
-          tokenUsage: this.getTokenUsage(),
-          metadata: {
-            processedDate: new Date().toISOString(),
-            sourceFile: path.basename(pdfPath),
-            ...this.aiProvider.getModelInfo(),
-            error: error instanceof Error ? error.message : String(error),
-          },
-        }
+        console.error(`Error processing CV: ${error}`)
+        throw error
       }
     } catch (error) {
       console.error(`Error processing CV: ${error}`)
-      return {
-        personalInfo: {
-          name: null,
-          email: null,
-          phone: null,
-          location: null,
-          linkedin: null,
-          github: null,
-        },
-        education: [],
-        experience: [],
-        skills: {},
-        tokenUsage: this.getTokenUsage(),
-        metadata: {
-          processedDate: new Date().toISOString(),
-          sourceFile: path.basename(pdfPath),
-          error: error instanceof Error ? error.message : String(error),
-        },
-      }
+      throw error
     }
-  }
-
-  /**
-   * Add token usage from a response to the running total
-   */
-  private addTokenUsageFromResponse(usage?: TokenUsageInfo): void {
-    if (!usage) return
-    this.tokenUsage.promptTokens += usage.promptTokens || 0
-    this.tokenUsage.completionTokens += usage.completionTokens || 0
-    this.tokenUsage.totalTokens += usage.totalTokens || 0
-    this.tokenUsage.estimatedCost =
-      (this.tokenUsage.estimatedCost || 0) + (usage.estimatedCost || 0)
-  }
-
-  /**
-   * Reset token usage statistics
-   */
-  private resetTokenUsage(): void {
-    this.tokenUsage = {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      estimatedCost: 0,
-    }
-  }
-
-  /**
-   * Get current token usage
-   */
-  getTokenUsage(): TokenUsage {
-    return { ...this.tokenUsage }
   }
 
   /**
@@ -289,18 +158,6 @@ export class AICVProcessor {
    */
   saveToJson(cvData: CVData, outputPath: string): void {
     try {
-      // Calculate accuracy score on the final processed data
-      // This ensures the accuracy reflects the data as it will be saved
-      cvData.accuracy = this.accuracyCalculator.calculateAccuracy(cvData)
-
-      // Test if it meets accuracy threshold
-      const meetsThreshold = this.meetsAccuracyThreshold(cvData)
-      if (!meetsThreshold && this.verbose) {
-        console.warn(
-          `CV does not meet minimum accuracy threshold of ${this.minAccuracyThreshold}%`
-        )
-      }
-
       // Generate a filename that includes provider, model, and timestamp
       const timestamp = new Date()
         .toISOString()
@@ -322,64 +179,9 @@ export class AICVProcessor {
 
       fs.writeFileSync(newOutputPath, JSON.stringify(cvData, null, 2))
       console.log(`Results saved to ${newOutputPath}`)
-
-      // Log accuracy information if available
-      if (cvData.accuracy) {
-        console.log(`CV Accuracy: ${cvData.accuracy.score}%`)
-        if (!this.accuracyCalculator.meetsThreshold(cvData.accuracy)) {
-          console.warn(
-            `Warning: This CV scored below the minimum accuracy threshold (${this.minAccuracyThreshold}%)`
-          )
-        }
-      }
     } catch (error) {
       console.error(`Error saving JSON file: ${error}`)
       throw error
-    }
-  }
-
-  /**
-   * Check if the CV meets the minimum accuracy threshold
-   */
-  meetsAccuracyThreshold(cvData: CVData): boolean {
-    if (!cvData.accuracy) {
-      return false
-    }
-
-    return this.accuracyCalculator.meetsThreshold(cvData.accuracy)
-  }
-
-  /**
-   * Set the minimum accuracy threshold
-   */
-  setMinAccuracyThreshold(threshold: number): void {
-    this.minAccuracyThreshold = threshold
-  }
-
-  /**
-   * Change the accuracy calculator type
-   */
-  changeAccuracyCalculator(
-    type: AccuracyCalculatorType,
-    options: ProcessorOptions = {}
-  ): void {
-    const calculatorOptions = {
-      ...options,
-      minAccuracyThreshold:
-        options.minAccuracyThreshold || this.minAccuracyThreshold,
-      accuracyWeights: options.accuracyWeights,
-    }
-
-    if (type === 'null-based') {
-      this.accuracyCalculator = new NullBasedAccuracyCalculator(
-        calculatorOptions
-      )
-    } else {
-      this.accuracyCalculator = new AccuracyCalculator(calculatorOptions)
-    }
-
-    if (this.verbose) {
-      console.log(`Changed to ${type} accuracy calculator`)
     }
   }
 }

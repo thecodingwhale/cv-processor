@@ -65,13 +65,6 @@ program
       const providerType = options.useAi as AIProviderType
       console.log(`Using AI processing with provider: ${providerType}`)
 
-      // Validate accuracy calculator type
-      const accuracyCalculatorType =
-        options.accuracyCalculator === 'null-based'
-          ? 'null-based'
-          : 'traditional'
-      console.log(`Using ${accuracyCalculatorType} accuracy calculator`)
-
       // Get API key from environment variables
       const apiKeyEnvVar =
         providerType === 'aws'
@@ -164,7 +157,6 @@ program
       )
       const processor = new AICVProcessor(aiProvider, {
         verbose: options.verbose,
-        accuracyCalculatorType: accuracyCalculatorType,
       })
 
       const cvData = await processor.processCv(pdfFile)
