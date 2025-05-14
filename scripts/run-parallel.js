@@ -8,12 +8,11 @@ const fs = require('fs')
 const CONFIGURATIONS = [
   { provider: 'gemini', model: undefined },
   { provider: 'gemini', model: 'gemini-1.5-flash-8b' },
+  { provider: 'gemini', model: 'gemini-1.5-pro' },
   { provider: 'openai', model: undefined },
   { provider: 'openai', model: 'gpt-4-turbo' },
   { provider: 'grok', model: undefined },
-  { provider: 'grok', model: 'grok-3-mini-fast-beta' },
-  { provider: 'azure', model: undefined },
-  { provider: 'azure', model: 'gpt-35-turbo' },
+  { provider: 'azure', model: 'gpt-4.1' },
   { provider: 'aws', model: undefined },
 ]
 

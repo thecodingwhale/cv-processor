@@ -40,7 +40,6 @@ export class AzureOpenAIProvider implements AIProvider {
     dataSchema: object,
     instructions: string
   ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
-    console.log('XXXXXXXXXX: ', this.config)
     try {
       const prompt = `
         ${instructions}
