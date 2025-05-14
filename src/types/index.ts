@@ -6,6 +6,13 @@ export interface CVData {
     provider?: string
     error?: string // Add optional error property
     processingTime?: number // Time in seconds it took to process
+    accuracy?: {
+      overall: number
+      categoryAssignment: number
+      completeness: number
+      structuralValidity: number
+      missingFields: string[]
+    }
   }
 }
 

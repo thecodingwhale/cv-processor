@@ -73,6 +73,7 @@ function runProcess(cvPath, config, outputDir) {
     let stdout = ''
     let stderr = ''
     let processingTime = null
+    let actualOutputFile = null // To store the actual file name after processing
 
     // Capture output
     process.stdout.on('data', (data) => {
@@ -83,6 +84,12 @@ function runProcess(cvPath, config, outputDir) {
       const match = output.match(/Processing completed in (\d+\.\d+) seconds/)
       if (match) {
         processingTime = parseFloat(match[1])
+      }
+
+      // Try to extract the actual output file name
+      const fileMatch = output.match(/Results saved to (.+\.json)/)
+      if (fileMatch) {
+        actualOutputFile = fileMatch[1]
       }
     })
 
@@ -95,15 +102,40 @@ function runProcess(cvPath, config, outputDir) {
       const endTime = new Date()
 
       if (code === 0) {
+        // Use the actual output file if we found it, otherwise scan the output directory
+        if (!actualOutputFile) {
+          // Try to find a file with the provider name if we couldn't get it from logs
+          const files = fs.readdirSync(outputDir)
+          const matchingFiles = files.filter(
+            (file) =>
+              file.startsWith(`${provider}_`) ||
+              file.startsWith(
+                `${provider}${
+                  model ? `_${model.replace(/[^\w-]/g, '-')}` : ''
+                }_`
+              )
+          )
+          if (matchingFiles.length > 0) {
+            actualOutputFile = path.join(outputDir, matchingFiles[0])
+          }
+        }
+
+        // If we still don't have the actual file, use the one we expected
+        if (!actualOutputFile) {
+          actualOutputFile = outputFile
+        }
+
         // Try to read the processing time from the output file if we couldn't get it from logs
-        if (!processingTime && fs.existsSync(outputFile)) {
+        if (!processingTime && fs.existsSync(actualOutputFile)) {
           try {
-            const data = JSON.parse(fs.readFileSync(outputFile, 'utf8'))
+            const data = JSON.parse(fs.readFileSync(actualOutputFile, 'utf8'))
             if (data.metadata && data.metadata.processingTime) {
               processingTime = data.metadata.processingTime
             }
           } catch (e) {
-            console.warn(`Couldn't read processing time from ${outputFile}`)
+            console.warn(
+              `Couldn't read processing time from ${actualOutputFile}`
+            )
           }
         }
 
@@ -112,7 +144,7 @@ function runProcess(cvPath, config, outputDir) {
           model,
           status: 'success',
           processingTime,
-          outputFile,
+          outputFile: actualOutputFile,
           stdout,
           stderr,
         })
@@ -197,14 +229,32 @@ function generateMarkdownReport(
 
   if (successResults.length > 0) {
     md += `## Successful Executions\n\n`
-    md += `| Provider | Model | Time (s) | Output File |\n`
-    md += `|----------|-------|----------|-------------|\n`
+    md += `| Provider | Model | Time (s) | Accuracy | Output File |\n`
+    md += `|----------|-------|----------|----------|-------------|\n`
 
     successResults.forEach((result) => {
+      let accuracyScore = 'N/A'
+
+      // Try to extract accuracy from the output file
+      if (fs.existsSync(result.outputFile)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(result.outputFile, 'utf8'))
+          if (
+            data.metadata &&
+            data.metadata.accuracy &&
+            typeof data.metadata.accuracy.overall === 'number'
+          ) {
+            accuracyScore = `${data.metadata.accuracy.overall}%`
+          }
+        } catch (e) {
+          console.warn(`Couldn't read accuracy from ${result.outputFile}`)
+        }
+      }
+
       const fileName = path.basename(result.outputFile)
       md += `| ${result.provider} | ${result.model || 'default'} | ${
         result.processingTime ? result.processingTime.toFixed(2) : 'N/A'
-      } | [View](./${fileName}) |\n`
+      } | ${accuracyScore} | [View](./${fileName}) |\n`
     })
     md += `\n`
   }
@@ -240,6 +290,63 @@ function generateMarkdownReport(
     md += `- **Average Time**: ${avgTime}s\n`
   } else {
     md += `No successful executions to compare.\n`
+  }
+
+  // Add accuracy comparison if available
+  const resultsWithAccuracy = successResults.filter((result) => {
+    if (!fs.existsSync(result.outputFile)) return false
+    try {
+      const data = JSON.parse(fs.readFileSync(result.outputFile, 'utf8'))
+      return (
+        data.metadata &&
+        data.metadata.accuracy &&
+        typeof data.metadata.accuracy.overall === 'number' &&
+        data.metadata.accuracy.overall > 0
+      )
+    } catch (e) {
+      return false
+    }
+  })
+
+  if (resultsWithAccuracy.length > 0) {
+    md += `\n## Accuracy Comparison\n\n`
+    md += `| Provider | Model | Overall | Categories | Completeness | Structure |\n`
+    md += `|----------|-------|---------|------------|--------------|----------|\n`
+
+    // Sort by overall accuracy (highest first)
+    resultsWithAccuracy.sort((a, b) => {
+      const dataA = JSON.parse(fs.readFileSync(a.outputFile, 'utf8'))
+      const dataB = JSON.parse(fs.readFileSync(b.outputFile, 'utf8'))
+      return dataB.metadata.accuracy.overall - dataA.metadata.accuracy.overall
+    })
+
+    resultsWithAccuracy.forEach((result) => {
+      const data = JSON.parse(fs.readFileSync(result.outputFile, 'utf8'))
+      const accuracy = data.metadata.accuracy
+
+      md += `| ${result.provider} | ${result.model || 'default'} | ${
+        accuracy.overall
+      }% | ${accuracy.categoryAssignment}% | ${accuracy.completeness}% | ${
+        accuracy.structuralValidity
+      }% |\n`
+    })
+
+    // Find the best performer in each category
+    const bestOverall = resultsWithAccuracy.reduce(
+      (best, current) => {
+        const data = JSON.parse(fs.readFileSync(current.outputFile, 'utf8'))
+        return best.score > data.metadata.accuracy.overall
+          ? best
+          : {
+              provider: current.provider,
+              model: current.model || 'default',
+              score: data.metadata.accuracy.overall,
+            }
+      },
+      { provider: 'none', model: 'none', score: 0 }
+    )
+
+    md += `\n**Best Overall Accuracy**: ${bestOverall.provider} (${bestOverall.model}) - ${bestOverall.score}%\n`
   }
 
   return md
