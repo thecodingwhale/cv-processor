@@ -203,7 +203,7 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
     case 'grok':
       return 'grok-2-vision-1212'
     case 'aws':
-      return 'apac.amazon.nova-micro-v1:0' // May need inference profile ARN
+      return 'apac.amazon.nova-lite-v1:0' // May need inference profile ARN
     default:
       return 'gemini-1.5-pro'
   }
