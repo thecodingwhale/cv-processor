@@ -13,8 +13,11 @@ export class GeminiAIProvider implements AIProvider {
     this.generativeModel = genAI.getGenerativeModel({
       model: config.model || 'gemini-1.5-pro',
       generationConfig: {
-        temperature: config.temperature || 0.2,
+        temperature: config.temperature || 0,
         maxOutputTokens: config.maxTokens || 8192,
+        topP: 1,
+        topK: 50,
+        candidateCount: 1,
       },
     })
   }

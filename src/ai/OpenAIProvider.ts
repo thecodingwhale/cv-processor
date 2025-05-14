@@ -29,7 +29,7 @@ export class OpenAIProvider implements AIProvider {
 
       const completion = await this.openai.chat.completions.create({
         model: this.config.model || 'gpt-4o',
-        temperature: this.config.temperature || 0.2,
+        temperature: this.config.temperature || 0,
         max_tokens: this.config.maxTokens || 4096,
         response_format: { type: 'json_object' },
         messages: [

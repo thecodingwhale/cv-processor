@@ -80,7 +80,8 @@ export class AzureOpenAIProvider implements AIProvider {
         messages: messages,
         model: 'gpt-4.1', // Required by OpenAI SDK but ignored by Azure
         // max_completion_tokens: this.config.maxTokens || 4096,
-        // temperature: this.config.temperature || 0.2,
+        temperature: this.config.temperature || 0,
+
         // max_tokens: this.config.maxTokens || 4096,
         // response_format: { type: 'json_object' },
         // response_format: { type: 'json_object' },

@@ -157,7 +157,8 @@ export class AWSBedrockProvider implements AIProvider {
         ],
         inferenceConfig: {
           maxTokens: this.config.maxTokens || 4096,
-          temperature: this.config.temperature || 0.2,
+          temperature: this.config.temperature || 0,
+          topP: 1,
         },
       })
 
