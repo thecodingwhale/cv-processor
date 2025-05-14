@@ -4,41 +4,21 @@ A TypeScript/Node.js tool to extract structured data from CV/resume PDFs.
 
 ## Overview
 
-This tool processes PDF resumes/CVs and extracts structured information into JSON format, making it easier to analyze, search, and integrate CV data into applications.
-
-This is a TypeScript/Node.js port of the original Python-based CV Processor, now with AI-powered extraction capabilities.
+This tool processes PDF resumes/CVs and extracts structured information into JSON format, making it easier to analyze, search, and integrate CV data into applications. It's specifically designed for actor/actress resumes to extract credits and categorize them properly.
 
 ## Features
 
-- PDF text extraction with OCR fallback for image-based PDFs
-- AI-powered extraction using Google's Gemini AI (default) or OpenAI with a flexible provider system
-- Traditional NLP-based extraction as a fallback option
-- Intelligent section detection (education, experience, skills, etc.)
-- NLP-based entity recognition for names, organizations, locations
-- Pattern matching for contact info, dates, etc.
-- Skill categorization by type
+- PDF text extraction and image processing for visual resume analysis
+- AI-powered extraction using multiple providers:
+  - Google's Gemini AI
+  - OpenAI (GPT-4, etc.)
+  - Azure OpenAI
+  - Grok (X.AI)
+  - AWS Bedrock (Claude, Nova, etc.)
+- Organized output with categorized credits
 - CLI interface for easy use
-- **Accuracy scoring and quality assessment**
-
-## Accuracy Scoring
-
-The CV processor now includes an accuracy scoring system that evaluates how well the data extraction performed. This provides several benefits:
-
-- Quantify the completeness and accuracy of extracted CV data
-- Compare results between different extraction methods (traditional vs AI-based)
-- Filter CVs that don't meet minimum quality thresholds
-- Identify missing or problematic data fields
-
-### How Accuracy is Calculated
-
-The accuracy score considers several factors:
-
-- **Completeness**: What percentage of expected fields were successfully extracted
-- **Confidence**: How trustworthy is the extracted data (based on consistency checks)
-- **Section Weights**: Configurable importance weights for different CV sections
-- **Missing Fields**: Detailed list of important fields that weren't found
-
-Each CV gets an overall score (0-100%) as well as section-specific scores.
+- Parallel processing of multiple AI providers
+- Performance metrics and processing time tracking
 
 ## Installation
 
@@ -83,74 +63,30 @@ AWS_REGION=us-east-1
 AWS_BEDROCK_INFERENCE_PROFILE_ARN=arn:aws:bedrock:us-east-1:123456789012:inference-profile/my-profile
 ```
 
-### Azure OpenAI Setup
+### Azure OpenAI and AWS Bedrock Setup
 
-To use Azure OpenAI, you need to:
+For detailed setup instructions for Azure OpenAI and AWS Bedrock, please refer to the respective documentation.
 
-1. Create an Azure OpenAI resource in the Azure portal
-2. Deploy a model (like gpt-4 or gpt-35-turbo) in the Azure OpenAI Studio
-3. Note down the following information:
-   - API Key (from "Keys and Endpoint" in your Azure OpenAI resource)
-   - Endpoint URL (e.g., https://your-resource-name.openai.azure.com)
-   - Deployment Name (the name you gave your model deployment, e.g., "gpt-4")
-   - API Version (use "2024-04-01-preview" or check the latest from Azure OpenAI documentation)
+## Customizing Instructions
 
-Make sure to use the exact deployment name you created in Azure OpenAI Studio.
+The application uses a text file for AI extraction instructions. You can customize these instructions by:
 
-For example, if your deployment in Azure OpenAI Studio is called "gpt-4", use:
+1. Editing the `instructions.txt` file in the project root directory
+2. Or specifying a custom instructions file path when creating an AICVProcessor:
 
-```
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+```typescript
+const processor = new AICVProcessor(aiProvider, {
+  instructionsPath: '/path/to/your/custom-instructions.txt',
+  verbose: true,
+})
 ```
 
-#### Azure OpenAI Model-Specific Requirements
+The instructions file contains:
 
-Different Azure OpenAI models have different parameter requirements and capabilities:
-
-- **o3-mini models**:
-  - Don't support the `temperature` parameter
-  - Use `max_completion_tokens` instead of `max_tokens`
-  - Don't support vision capabilities (can't process images)
-- **Vision-capable models (GPT-4o, GPT-4 Vision)**:
-
-  - Support processing images from PDFs
-  - Used for visual document analysis
-
-- **Standard models (GPT-4, GPT-3.5-Turbo)**:
-  - Support standard parameters like `temperature` and `max_tokens`
-
-The application will automatically detect:
-
-1. Whether your model supports vision capabilities
-2. Parameter requirements for specific model types
-
-For models without vision capabilities, the system will automatically extract text from PDFs before processing.
-
-### AWS Bedrock Setup
-
-To use AWS Bedrock:
-
-1. Create an AWS account and set up AWS Bedrock access
-2. Ensure you have the necessary permissions to use the models you want to access
-3. Request access to specific models like Claude 3 or Amazon Nova in the AWS console
-4. Set up your credentials either:
-   - Using environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION)
-   - Or using the AWS credentials file (~/.aws/credentials)
-
-AWS Bedrock supports multiple models with different capabilities:
-
-- **Amazon Nova models**:
-  - Good for structured data extraction
-  - Lower cost than premium models
-  - **Requires an inference profile ARN** for Nova models
-  - Example model ID: `apac.amazon.nova-micro-v1:0`
-  - Set `AWS_BEDROCK_INFERENCE_PROFILE_ARN` environment variable
-- **Claude models**:
-  - Support vision capabilities for processing PDFs visually
-  - Higher quality responses for complex tasks
-  - Example model ID: `anthropic.claude-3-sonnet-20240229-v1:0`
-
-> **Note**: Some AWS Bedrock models (especially Nova models) require specific inference profiles. You'll need to create an inference profile in the AWS Bedrock console and set the ARN in the `AWS_BEDROCK_INFERENCE_PROFILE_ARN` environment variable.
+- The schema definition for extracted data
+- Categorization rules for actor credits
+- Extraction rules and guidelines
+- Examples of expected input/output
 
 ## Usage
 
@@ -165,9 +101,6 @@ npm start -- path/to/resume.pdf -v
 
 # Specify output file
 npm start -- path/to/resume.pdf -o output.json
-
-# Use traditional (non-AI) processing
-npm start -- path/to/resume.pdf --traditional
 
 # Use OpenAI instead of Gemini
 npm start -- path/to/resume.pdf --use-ai openai
@@ -187,9 +120,25 @@ npm start -- path/to/resume.pdf --ai-model gpt-4o
 npm start -- path/to/resume.pdf --use-ai gemini --ai-model gemini-1.5-flash
 ```
 
-### API Usage
+### Parallel Processing
 
-#### Using AI Processing with Gemini
+You can process a CV with multiple AI providers in parallel:
+
+```bash
+# Process with all configured providers simultaneously
+npm run parallel path/to/resume.pdf
+```
+
+This will:
+
+1. Run extractions using all configured AI providers/models in parallel
+2. Save all results to an organized output directory
+3. Generate a markdown report comparing performance and results
+4. Track processing time for benchmarking purposes
+
+The output will be saved to: `output/CVName_YYYY-MM-DD_HH-MM-SS/`
+
+### API Usage
 
 ```typescript
 import { AIProviderFactory } from './dist/ai/AIProviderFactory'
@@ -204,7 +153,11 @@ const main = async () => {
 
   // Create AI provider and processor
   const aiProvider = AIProviderFactory.createProvider('gemini', aiConfig)
-  const processor = new AICVProcessor(aiProvider, { verbose: true })
+  const processor = new AICVProcessor(aiProvider, {
+    verbose: true,
+    // Optional: custom instructions path
+    instructionsPath: './my-custom-instructions.txt',
+  })
 
   try {
     // Process the CV
@@ -212,148 +165,6 @@ const main = async () => {
 
     // Save to file
     processor.saveToJson(cvData, 'output.json')
-
-    // Or use the data directly
-    console.log(cvData.personalInfo.name)
-    console.log(cvData.skills.programmingLanguages)
-  } catch (error) {
-    console.error('Error processing CV:', error)
-  }
-}
-
-main()
-```
-
-#### Using AI Processing with OpenAI
-
-```typescript
-import { AIProviderFactory } from './dist/ai/AIProviderFactory'
-import { AICVProcessor } from './dist/AICVProcessor'
-
-const main = async () => {
-  // Configure AI provider
-  const aiConfig = {
-    apiKey: process.env.OPENAI_API_KEY!,
-    model: 'gpt-4o',
-  }
-
-  // Create AI provider and processor
-  const aiProvider = AIProviderFactory.createProvider('openai', aiConfig)
-  const processor = new AICVProcessor(aiProvider, { verbose: true })
-
-  try {
-    // Process the CV
-    const cvData = await processor.processCv('path/to/resume.pdf')
-
-    // Save to file
-    processor.saveToJson(cvData, 'output.json')
-
-    // Or use the data directly
-    console.log(cvData.personalInfo.name)
-    console.log(cvData.skills.programmingLanguages)
-  } catch (error) {
-    console.error('Error processing CV:', error)
-  }
-}
-
-main()
-```
-
-#### Using AI Processing with Azure OpenAI
-
-```typescript
-import { AIProviderFactory } from './dist/ai/AIProviderFactory'
-import { AICVProcessor } from './dist/AICVProcessor'
-
-const main = async () => {
-  // Configure AI provider with Azure OpenAI settings
-  const aiConfig = {
-    apiKey: process.env.AZURE_OPENAI_API_KEY!,
-    model: 'gpt-4', // This can be any string, as Azure uses the deployment name
-    endpoint: process.env.AZURE_OPENAI_ENDPOINT!,
-    apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview',
-    deploymentName: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4', // Must match your Azure deployment name
-  }
-
-  // Create AI provider and processor
-  const aiProvider = AIProviderFactory.createProvider('azure', aiConfig)
-  const processor = new AICVProcessor(aiProvider, { verbose: true })
-
-  try {
-    // Process the CV
-    const cvData = await processor.processCv('path/to/resume.pdf')
-
-    // Save to file
-    processor.saveToJson(cvData, 'output.json')
-
-    // Or use the data directly
-    console.log(cvData.personalInfo.name)
-    console.log(cvData.skills.programmingLanguages)
-  } catch (error) {
-    console.error('Error processing CV:', error)
-  }
-}
-
-main()
-```
-
-#### Using AI Processing with AWS Bedrock
-
-```typescript
-import { AIProviderFactory } from './dist/ai/AIProviderFactory'
-import { AICVProcessor } from './dist/AICVProcessor'
-
-const main = async () => {
-  // Configure AI provider with AWS Bedrock settings
-  const aiConfig = {
-    apiKey: process.env.AWS_ACCESS_KEY_ID!, // Will be used if AWS credentials aren't configured
-    model: 'anthropic.claude-3-sonnet-20240229-v1:0', // Using Claude model which is widely supported
-    region: process.env.AWS_REGION || 'us-east-1',
-    // Optional: provide explicit credentials (or use AWS credential file)
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  }
-
-  // Create AI provider and processor
-  const aiProvider = AIProviderFactory.createProvider('aws', aiConfig)
-  const processor = new AICVProcessor(aiProvider, { verbose: true })
-
-  try {
-    // Process the CV
-    const cvData = await processor.processCv('path/to/resume.pdf')
-
-    // Save to file
-    processor.saveToJson(cvData, 'output.json')
-
-    // Or use the data directly
-    console.log(cvData.personalInfo.name)
-    console.log(cvData.skills.programmingLanguages)
-  } catch (error) {
-    console.error('Error processing CV:', error)
-  }
-}
-
-main()
-```
-
-#### Using Traditional Processing
-
-```typescript
-import { CVProcessor } from './dist/CVProcessor'
-
-const main = async () => {
-  const processor = new CVProcessor({ verbose: true })
-
-  try {
-    // Process the CV
-    const cvData = await processor.processCv('path/to/resume.pdf')
-
-    // Save to file
-    processor.saveToJson(cvData, 'output.json')
-
-    // Or use the data directly
-    console.log(cvData.personalInfo.name)
-    console.log(cvData.skills.programmingLanguages)
   } catch (error) {
     console.error('Error processing CV:', error)
   }
@@ -368,48 +179,43 @@ The processed CV is output as a JSON file with the following structure:
 
 ```json
 {
-  "personalInfo": {
-    "name": "John Doe",
-    "email": "john.doe@example.com",
-    "phone": "+1 (555) 123-4567",
-    "location": "New York, NY",
-    "linkedin": "https://linkedin.com/in/johndoe",
-    "github": "https://github.com/johndoe",
-    "summary": "Experienced software engineer..."
-  },
-  "education": [
+  "resume": [
     {
-      "institution": "University of Example",
-      "degree": "Bachelor of Science",
-      "fieldOfStudy": "Computer Science",
-      "startDate": "September 2014",
-      "endDate": "May 2018",
-      "gpa": "3.8",
-      "location": "Boston, MA"
-    }
-  ],
-  "experience": [
+      "category": "Film",
+      "category_id": "a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6",
+      "credits": [
+        {
+          "id": "b1c2d3e4-f5g6-h7i8-j9k0-l1m2n3o4p5q6",
+          "year": "2023",
+          "title": "Major Motion Picture",
+          "role": "Supporting Character",
+          "director": "Famous Director",
+          "attached_media": []
+        }
+      ]
+    },
     {
-      "company": "Tech Company Inc.",
-      "position": "Senior Software Engineer",
-      "startDate": "January 2020",
-      "endDate": "Present",
-      "location": "San Francisco, CA",
-      "description": [
-        "Led development of a microservices architecture...",
-        "Improved system performance by 40%..."
+      "category": "Television",
+      "category_id": "c1d2e3f4-g5h6-i7j8-k9l0-m1n2o3p4q5r6",
+      "credits": [
+        {
+          "id": "d1e2f3g4-h5i6-j7k8-l9m0-n1o2p3q4r5s6",
+          "year": "2022",
+          "title": "Popular TV Show",
+          "role": "Guest Star",
+          "director": "TV Director",
+          "attached_media": []
+        }
       ]
     }
   ],
-  "skills": {
-    "programmingLanguages": ["JavaScript", "TypeScript", "Python"],
-    "frameworks": ["React", "Node.js", "Express"],
-    "tools": ["Git", "Docker", "AWS"],
-    "softSkills": ["Leadership", "Communication"]
-  },
+  "resume_show_years": true,
   "metadata": {
     "processedDate": "2023-07-01T12:34:56.789Z",
-    "sourceFile": "resume.pdf"
+    "sourceFile": "actor_resume.pdf",
+    "processingTime": 5.23,
+    "provider": "gemini",
+    "model": "gemini-1.5-pro"
   }
 }
 ```
@@ -426,156 +232,23 @@ The application is designed with a flexible AI provider system that allows you t
    - Grok (X.AI) API
    - AWS Bedrock (Amazon Nova, etc.)
 
-2. **Adding New Providers:**
-   - Implement the `AIProvider` interface
-   - Add the provider to the `AIProviderFactory`
+2. **Performance Metrics:**
+   - Each output includes processing time in seconds
+   - Filenames include the processing time for easy comparison
+   - Parallel processing generates reports comparing all providers
 
 ## Dependencies
 
 - **@google/generative-ai**: Google Gemini AI integration
 - **openai**: OpenAI API integration
 - **pdf-parse**: PDF text extraction
-- **tesseract.js**: OCR capability (for traditional processing)
-- **compromise**: Natural language processing (for traditional processing)
+- **tesseract.js**: OCR capability
+- **@aws-sdk/client-bedrock-runtime**: AWS Bedrock integration
 - **commander**: CLI framework
 - **dotenv**: Environment variable management
-- **poppler-utils**: Required for PDF to image conversion when using OpenAI (external dependency)
-
-### System Dependencies
-
-To use OpenAI's vision capabilities with PDFs, you need to install poppler-utils:
-
-```bash
-# On macOS
-brew install poppler
-
-# On Ubuntu/Debian
-sudo apt-get install poppler-utils
-
-# On CentOS/RHEL
-sudo yum install poppler-utils
-```
-
-## Limitations
-
-- AI-based extraction requires valid API keys and internet connectivity
-- OCR functionality requires additional setup for PDF to image conversion
-- NLP capabilities in JavaScript are not as robust as Python's spaCy
-- Complex PDF layouts may not be parsed perfectly
+- **jsonrepair**: Fix malformed JSON from AI responses
+- **poppler-utils**: Required for PDF to image conversion (external dependency)
 
 ## License
 
 MIT
-
-## Usage
-
-```typescript
-import { processCv } from './src'
-import * as path from 'path'
-
-// Process a CV with rule-based extraction
-const pdfPath = path.resolve(__dirname, 'sample_resume.pdf')
-
-// Process with all available methods and custom accuracy threshold
-processCv(pdfPath, {
-  useOpenAI: true,
-  useGemini: true,
-  verbose: true,
-  outputPath: './output/results.json',
-  minAccuracyThreshold: 70, // Set minimum accuracy to 70%
-  accuracyWeights: {
-    personalInfo: 0.3, // Higher weight for personal info
-    education: 0.2,
-    experience: 0.35, // Higher weight for experience
-    skills: 0.15,
-  },
-})
-```
-
-## Configuration
-
-### Processor Options
-
-| Option                 | Type      | Description                           |
-| ---------------------- | --------- | ------------------------------------- |
-| `verbose`              | `boolean` | Enable detailed logging               |
-| `outputPath`           | `string`  | Path to save output JSON files        |
-| `minAccuracyThreshold` | `number`  | Minimum accuracy threshold (0-100)    |
-| `accuracyWeights`      | `object`  | Custom weights for different sections |
-
-### Accuracy Threshold
-
-Set a minimum accuracy threshold (0-100%) to filter out low-quality extractions:
-
-```typescript
-const processor = new CVProcessor({
-  minAccuracyThreshold: 75, // Require at least 75% accuracy
-})
-
-const results = await processor.processCv('resume.pdf')
-if (processor.meetsAccuracyThreshold(results)) {
-  // Process high-quality extraction
-} else {
-  // Handle low-quality extraction
-}
-```
-
-## Output Format
-
-The extracted data follows this structure:
-
-```typescript
-interface CVData {
-  personalInfo: {
-    name: string | null
-    email: string | null
-    phone: string | null
-    location: string | null
-    linkedin: string | null
-    github: string | null
-    summary?: string | null
-  }
-  education: Array<{
-    institution: string | null
-    degree: string | null
-    fieldOfStudy: string | null
-    startDate: string | null
-    endDate: string | null
-    gpa: string | null
-    location: string | null
-  }>
-  experience: Array<{
-    company: string | null
-    position: string | null
-    startDate: string | null
-    endDate: string | null
-    location: string | null
-    description: string[]
-  }>
-  skills: {
-    programmingLanguages?: string[]
-    frameworks?: string[]
-    tools?: string[]
-    softSkills?: string[]
-    other?: string[]
-  }
-  accuracy?: {
-    score: number
-    completeness: number
-    confidence: number
-    fieldScores: {
-      personalInfo?: number
-      education?: number
-      experience?: number
-      skills?: number
-    }
-    missingFields: string[]
-  }
-  metadata: {
-    processedDate: string
-    sourceFile: string
-    model?: string
-    provider?: string
-  }
-}
-```
