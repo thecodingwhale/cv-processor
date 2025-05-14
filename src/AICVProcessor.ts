@@ -30,6 +30,9 @@ export class AICVProcessor {
   async processCv(pdfPath: string): Promise<CVData> {
     console.log(`Processing CV with AI: ${pdfPath}`)
 
+    // Track start time for processing
+    const startTime = new Date().getTime()
+
     try {
       const imageUrls = await convertPdfToImages(pdfPath)
 
@@ -135,10 +138,19 @@ export class AICVProcessor {
           instructions
         )
 
+        // Calculate processing time
+        const processingTime = (new Date().getTime() - startTime) / 1000
+        console.log(
+          `[AICVProcessor] Processing completed in ${processingTime.toFixed(
+            2
+          )} seconds`
+        )
+
         // Add metadata
         cvData.metadata = {
           processedDate: new Date().toISOString(),
           sourceFile: path.basename(pdfPath),
+          processingTime: processingTime,
           ...this.aiProvider.getModelInfo(),
         }
 
@@ -165,16 +177,19 @@ export class AICVProcessor {
         .replace(/\./g, '-')
       const providerName = cvData.metadata?.provider || 'unknown'
       const modelName = cvData.metadata?.model || 'unknown'
+      const processingTime = cvData.metadata?.processingTime
+        ? `_${cvData.metadata.processingTime.toFixed(2)}s`
+        : ''
 
       // Extract base path and extension
       const outputDir = path.dirname(outputPath)
       const outputBaseName = path.basename(outputPath, path.extname(outputPath))
       const outputExt = path.extname(outputPath)
 
-      // Create filename with provider, model, and timestamp
+      // Create filename with provider, model, timestamp and processing time
       const newOutputPath = path.join(
         outputDir,
-        `${outputBaseName}_${providerName}_${modelName}_${timestamp}${outputExt}`
+        `${outputBaseName}_${providerName}_${modelName}${processingTime}_${timestamp}${outputExt}`
       )
 
       fs.writeFileSync(newOutputPath, JSON.stringify(cvData, null, 2))

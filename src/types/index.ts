@@ -71,6 +71,7 @@ export interface CVData {
     model?: string
     provider?: string
     error?: string // Add optional error property
+    processingTime?: number // Time in seconds it took to process
   }
 }
 
