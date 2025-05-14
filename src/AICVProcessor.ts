@@ -10,6 +10,7 @@ import { convertPdfToImages } from './utils/document'
 export class AICVProcessor {
   private aiProvider: AIProvider
   private verbose: boolean
+  private instructionsPath: string
 
   // private industryContext: string // Store industry context for patterns
 
@@ -19,8 +20,40 @@ export class AICVProcessor {
   constructor(aiProvider: AIProvider, options: ProcessorOptions = {}) {
     this.aiProvider = aiProvider
     this.verbose = options.verbose || false
+    this.instructionsPath =
+      options.instructionsPath || path.join(process.cwd(), 'instructions.txt')
+
     if (this.verbose) {
       console.log('AI CV Processor initialized')
+      console.log(`Using instructions from: ${this.instructionsPath}`)
+    }
+  }
+
+  /**
+   * Load instructions from the specified file
+   * Falls back to default instructions if file cannot be read
+   */
+  private async loadInstructions(): Promise<string | null> {
+    try {
+      // Check if instructions file exists
+      if (fs.existsSync(this.instructionsPath)) {
+        const instructions = await fs.promises.readFile(
+          this.instructionsPath,
+          'utf8'
+        )
+        if (this.verbose) {
+          console.log(
+            `Successfully loaded instructions from ${this.instructionsPath}`
+          )
+        }
+        return instructions
+      } else {
+        console.warn(`Instructions file not found: ${this.instructionsPath}`)
+        return null
+      }
+    } catch (error) {
+      console.error(`Error loading instructions file: ${error}`)
+      return null
     }
   }
 
@@ -59,76 +92,11 @@ export class AICVProcessor {
         },
       }
 
-      // Create a prompt that incorporates industry context and any patterns detected
-      const instructions = `
-        You are an AI data extractor for an actor's resume system. I will provide you the full text of an actor's resume (from PDF). Your task is to extract and convert the credits into a structured JSON object matching this schema:
-
-        {
-          "resume": [
-            {
-              "category": "<Category>", // MUST be one of these official categories
-              "category_id": "<UUIDv4>", // always generate a new UUIDv4 for each unique category
-              "credits": [
-                {
-                  "id": "<UUIDv4>", // always generate a new UUIDv4 for each credit
-                  "year": "YYYY",
-                  "title": "<Title of Production>",
-                  "role": "<Role>",
-                  "director": "<Director Name>",
-                  "attached_media": [] // leave as empty array
-                }
-              ]
-            },
-            ...
-          ],
-          "resume_show_years": true
-        }
-
-        ✅ Official allowed categories:
-        ["Commercial", "Film", "Television", "Theatre", "Print / Fashion", "Training", "Voice", "Stunt", "Corporate", "MC/Presenting", "Extras", "Other"]
-
-        Categorization rules:
-
-        - Only classify credits under these official categories.
-        - Map synonyms, similar phrases, and related wording **logically to the closest matching official category.** For example:
-          (e.g., "Voice Over" → "Voice", "Feature Film" → "Film", "Stage" → "Theatre", "Presenter" → "MC/Presenting")
-        - Always prioritize semantic meaning over literal wording.
-        - If a credit cannot be confidently mapped → assign it under "Other".
-        - Never invent a new category outside the official list.
-
-        ✅ Extraction rules:
-
-        - Extract **only credits (roles and productions)** → ignore sections like Profile, Notes, Skills, Memberships.
-        - Group credits under their respective categories.
-        - Each unique category must have its own unique 'category_id' (UUIDv4).
-        - Each credit must have its own unique 'id' (UUIDv4).
-        - If director name is missing → set '"director": ""'.
-        - Remove duplicate credits.
-        - Keep credits **grouped by category** and in chronological order (if possible).
-        - Do not include empty categories (categories with no credits).
-
-        Example input from resume:
-        2023
-        Voice Over Narrator Aussie Truck Rehab Discovery Channel Roger Power
-
-        Expected output:
-        {
-        "category": "Voice",
-        "category_id": "f70d3ec4-3e90-4238-b129-032de7f0aa9d",
-        "credits": [
-        {
-        "id": "b493c51b-7fbd-4f6a-83d7-5f4238f7ee4a",
-        "year": "2023",
-        "title": "Aussie Truck Rehab",
-        "role": "Narrator",
-        "director": "Roger Power",
-        "attached_media": []
-        }
-        ]
-        }
-
-        ✅ Final output: a **single JSON object following the schema**, containing all credits grouped per category, all IDs generated as UUIDv4.
-      `
+      // Load instructions from file
+      const instructions = await this.loadInstructions()
+      if (!instructions) {
+        throw new Error('No instructions found')
+      }
 
       try {
         // Use AI to extract structured data
