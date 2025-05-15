@@ -17,6 +17,7 @@ import { AICVProcessor } from './AICVProcessor'
 import { AIProviderFactory, AIProviderType } from './ai/AIProviderFactory'
 import { AzureOpenAIConfig } from './ai/AzureOpenAIProvider'
 import { AIModelConfig } from './types/AIProvider'
+import { mergeReports } from './utils/reportMerger'
 
 // Load environment variables
 dotenv.config()
@@ -28,6 +29,10 @@ program
   .name('cv-processor-ts')
   .description('Extract structured data from CV/resume PDF')
   .version('1.0.0')
+
+program
+  .command('process')
+  .description('Process a single CV/resume PDF file')
   .argument('<pdf-file>', 'Path to the CV/resume PDF file')
   .option(
     '-o, --output <file>',
@@ -172,11 +177,47 @@ program
     }
   })
 
-// Parse arguments
-program.parse()
+program
+  .command('merge-reports')
+  .description('Merge and analyze reports from multiple CV processing runs')
+  .option(
+    '-d, --dir <directory>',
+    'Directory containing CV processing output',
+    'output'
+  )
+  .option(
+    '-o, --output <file>',
+    'Output file for the merged report',
+    'merged-report.md'
+  )
+  .action(async (options) => {
+    try {
+      console.log(`Merging reports from ${options.dir}...`)
 
-// If no arguments, show help
-if (process.argv.length < 3) {
+      // Check if the output directory exists
+      if (!fs.existsSync(options.dir)) {
+        console.error(`Error: Output directory not found: ${options.dir}`)
+        process.exit(1)
+      }
+
+      // Run the report merger
+      const result = await mergeReports(options.dir)
+
+      // Save the report
+      fs.writeFileSync(options.output, result)
+
+      console.log(`Merged report saved to ${options.output}`)
+    } catch (error) {
+      console.error(`Error merging reports: ${error}`)
+      process.exit(1)
+    }
+  })
+
+// For backward compatibility, make 'process' the default command
+program.parse(process.argv)
+
+// If no arguments or if only the program name is provided, show help
+if (process.argv.length <= 2) {
   program.help()
 }
 
@@ -184,7 +225,6 @@ if (process.argv.length < 3) {
  * Get the default model name for a given AI provider
  */
 function getDefaultModelForProvider(provider: AIProviderType): string {
-  console.log('getDefaultModelForProvider > provider: ', provider)
   switch (provider) {
     case 'gemini':
       return 'gemini-1.5-pro'

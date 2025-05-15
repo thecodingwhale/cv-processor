@@ -10,7 +10,8 @@
     "test": "jest",
     "parallel": "node scripts/run-parallel.js",
     "baseMetrics": "node scripts/generate-base-metrics.js",
-    "updateBaseMetrics": "node scripts/generate-base-metrics.js --update"
+    "updateBaseMetrics": "node scripts/generate-base-metrics.js --update",
+    "merge-reports": "node dist/index.js merge-reports"
   },
   "keywords": [
     "CV",
@@ -27,12 +28,14 @@
     "commander": "^11.1.0",
     "compromise": "^14.11.0",
     "dotenv": "^16.3.1",
+    "glob": "^10.4.5",
     "jsonrepair": "^3.12.0",
     "openai": "^4.26.0",
     "pdf-parse": "^1.1.1",
     "tesseract.js": "^5.0.0"
   },
   "devDependencies": {
+    "@types/glob": "^8.1.0",
     "@types/node": "^20.10.0",
     "@types/pdf-parse": "^1.1.1",
     "jest": "^29.7.0",

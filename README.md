@@ -19,6 +19,7 @@ This tool processes PDF resumes/CVs and extracts structured information into JSO
 - CLI interface for easy use
 - Parallel processing of multiple AI providers
 - Performance metrics and processing time tracking
+- Reports analysis and provider comparison
 
 ## Installation
 
@@ -94,30 +95,30 @@ The instructions file contains:
 
 ```bash
 # Process a PDF resume with default AI (Gemini)
-npm start -- path/to/resume.pdf
+npm start -- process path/to/resume.pdf
 
 # With verbose output
-npm start -- path/to/resume.pdf -v
+npm start -- process path/to/resume.pdf -v
 
 # Specify output file
-npm start -- path/to/resume.pdf -o output.json
+npm start -- process path/to/resume.pdf -o output.json
 
 # Use OpenAI instead of Gemini
-npm start -- path/to/resume.pdf --use-ai openai
+npm start -- process path/to/resume.pdf --use-ai openai
 
 # Use Azure OpenAI
-npm start -- path/to/resume.pdf --use-ai azure
+npm start -- process path/to/resume.pdf --use-ai azure
 
 # Use Grok (X.AI)
-npm start -- path/to/resume.pdf --use-ai grok
+npm start -- process path/to/resume.pdf --use-ai grok
 
 # Use AWS Bedrock
-npm start -- path/to/resume.pdf --use-ai aws
-npm start -- path/to/resume.pdf --use-ai aws --ai-model anthropic.claude-3-sonnet-20240229-v1:0
+npm start -- process path/to/resume.pdf --use-ai aws
+npm start -- process path/to/resume.pdf --use-ai aws --ai-model anthropic.claude-3-sonnet-20240229-v1:0
 
 # Specify a different AI model
-npm start -- path/to/resume.pdf --ai-model gpt-4o
-npm start -- path/to/resume.pdf --use-ai gemini --ai-model gemini-1.5-flash
+npm start -- process path/to/resume.pdf --ai-model gpt-4o
+npm start -- process path/to/resume.pdf --use-ai gemini --ai-model gemini-1.5-flash
 ```
 
 ### Parallel Processing
@@ -137,6 +138,30 @@ This will:
 4. Track processing time for benchmarking purposes
 
 The output will be saved to: `output/CVName_YYYY-MM-DD_HH-MM-SS/`
+
+### Analyzing Results
+
+After running multiple CV processes, you can generate a merged report to compare AI provider performance:
+
+```bash
+# Generate a merged report from all output directories
+npm start -- merge-reports
+
+# Specify a custom output directory
+npm start -- merge-reports -d ./my-output-folder
+
+# Specify a custom output file for the report
+npm start -- merge-reports -o performance-analysis.md
+```
+
+The merged report provides:
+
+1. Rankings of AI providers by accuracy, speed, and combined performance
+2. Detailed metrics for each provider and model
+3. Recommendations for the best overall performer
+4. Summary of all processing runs
+
+This helps identify which AI provider and model combination delivers the best results for your specific CV processing needs.
 
 ### API Usage
 
@@ -236,6 +261,7 @@ The application is designed with a flexible AI provider system that allows you t
    - Each output includes processing time in seconds
    - Filenames include the processing time for easy comparison
    - Parallel processing generates reports comparing all providers
+   - Merged reports identify the best providers based on accuracy and speed
 
 ## Dependencies
 
@@ -247,6 +273,7 @@ The application is designed with a flexible AI provider system that allows you t
 - **commander**: CLI framework
 - **dotenv**: Environment variable management
 - **jsonrepair**: Fix malformed JSON from AI responses
+- **glob**: File path matching
 - **poppler-utils**: Required for PDF to image conversion (external dependency)
 
 ## License

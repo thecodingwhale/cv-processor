@@ -2,3 +2,7 @@
 dist
 node_modules
 .DS_Store
+base/
+cache/
+merged-report.md
+output/
