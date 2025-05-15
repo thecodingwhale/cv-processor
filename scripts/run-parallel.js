@@ -65,7 +65,16 @@ function runProcess(cvPath, config, outputDir) {
     )
 
     // Build the command arguments
-    const args = ['start', '--', cvPath, '--use-ai', provider, '-o', outputFile]
+    const args = [
+      'start',
+      '--',
+      'process',
+      cvPath,
+      '--use-ai',
+      provider,
+      '-o',
+      outputFile,
+    ]
     if (model) {
       args.push('--ai-model', model)
     }
