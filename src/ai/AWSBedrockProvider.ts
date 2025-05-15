@@ -23,20 +23,13 @@ interface ModelPricing {
 
 const AWS_BEDROCK_PRICING: Record<string, ModelPricing> = {
   // Amazon models
-  'apac.amazon.nova-lite-v1:0': { input: 0.0003, output: 0.0004 },
-  'apac.amazon.nova-v1:0': { input: 0.0015, output: 0.002 },
-  // Anthropic Claude models
-  'anthropic.claude-3-haiku-20240307-v1:0': { input: 0.00125, output: 0.00375 },
-  'anthropic.claude-3-sonnet-20240229-v1:0': { input: 0.003, output: 0.015 },
-  'anthropic.claude-3-opus-20240229-v1:0': { input: 0.015, output: 0.075 },
-  // AI21 Jamba
-  'ai21.jamba-1.5-mini': { input: 0.0003, output: 0.0015 },
-  'ai21.jamba-1.5': { input: 0.0013, output: 0.0063 },
-  // Meta Llama
-  'meta.llama3-8b-instruct-v1:0': { input: 0.0002, output: 0.0002 },
-  'meta.llama3-70b-instruct-v1:0': { input: 0.00075, output: 0.00095 },
+  'apac.amazon.nova-micro-v1:0': { input: 0.000035, output: 0.00014 },
+  'apac.amazon.nova-lite-v1:0': { input: 0.00006, output: 0.00024 },
+  'apac.amazon.nova-v1:0': { input: 0.0008, output: 0.0032 },
+  'apac.amazon.nova-v1-premium:0': { input: 0.001, output: 0.004 },
+  'apac.amazon.nova-premier-v1:0': { input: 0.0025, output: 0.0125 },
   // Default
-  default: { input: 0.001, output: 0.002 },
+  default: { input: 0.00006, output: 0.00024 },
 }
 
 export class AWSBedrockProvider implements AIProvider {

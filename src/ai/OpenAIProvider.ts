@@ -12,12 +12,25 @@ interface ModelPricing {
 }
 
 const OPENAI_PRICING: Record<string, ModelPricing> = {
-  'gpt-4o': { input: 0.005, output: 0.015 },
+  'gpt-4o-2024-11-20': { input: 0.0025, output: 0.01 },
+  'gpt-4o-2024-08-06': { input: 0.0025, output: 0.01 },
+  'gpt-4o-2024-05-13': { input: 0.0025, output: 0.01 },
+  'gpt-4o': { input: 0.0025, output: 0.01 },
+  'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
+  'gpt-4.5-preview': { input: 0.075, output: 0.15 },
+  'gpt-4.1': { input: 0.002, output: 0.008 },
+  'gpt-4.1-mini': { input: 0.0004, output: 0.0016 },
+  'gpt-4.1-nano': { input: 0.0001, output: 0.0004 },
   'gpt-4-turbo': { input: 0.01, output: 0.03 },
   'gpt-4': { input: 0.03, output: 0.06 },
-  'gpt-3.5-turbo': { input: 0.0015, output: 0.002 },
-  // Add more models as needed
-  default: { input: 0.01, output: 0.03 }, // Default fallback pricing
+  'gpt-3.5-turbo': { input: 0.0005, output: 0.0015 },
+  o3: { input: 0.01, output: 0.04 },
+  'o3-mini': { input: 0.0011, output: 0.0044 },
+  'o4-mini': { input: 0.0011, output: 0.0044 },
+  o1: { input: 0.015, output: 0.06 },
+  'o1-mini': { input: 0.0011, output: 0.0044 },
+  // Default
+  default: { input: 0.0025, output: 0.01 }, // Default fallback pricing
 }
 
 export class OpenAIProvider implements AIProvider {

@@ -4,6 +4,7 @@ import { CVData, ProcessorOptions } from './types'
 import { AIProvider } from './types/AIProvider'
 import { ConsensusAccuracyScorer } from './utils/ConsensusAccuracyScorer'
 import { convertPdfToImages } from './utils/document'
+import { ReportGenerator } from './utils/reportGenerator'
 
 /**
  * AI-powered CV Processor class to extract structured data from PDF resumes
@@ -241,8 +242,32 @@ export class AICVProcessor {
         `${outputBaseName}_${providerName}_${modelName}${processingTime}_${timestamp}${outputExt}`
       )
 
-      fs.writeFileSync(newOutputPath, JSON.stringify(cvData, null, 2))
-      console.log(`Results saved to ${newOutputPath}`)
+      // Create directory for output if it doesn't exist
+      const resultDir = path.join(
+        outputDir,
+        `${outputBaseName}_${timestamp.split('T')[0]}`
+      )
+      if (!fs.existsSync(resultDir)) {
+        fs.mkdirSync(resultDir, { recursive: true })
+      }
+
+      // Save to the directory
+      const finalOutputPath = path.join(
+        resultDir,
+        `${providerName}_${modelName}${processingTime}${outputExt}`
+      )
+
+      fs.writeFileSync(finalOutputPath, JSON.stringify(cvData, null, 2))
+      console.log(`Results saved to ${finalOutputPath}`)
+
+      // Generate and save a report for this directory
+      ReportGenerator.generateAndSaveReport(resultDir, this.verbose)
+        .then(() => {
+          console.log(`Report generated for ${resultDir}`)
+        })
+        .catch((error) => {
+          console.error(`Error generating report: ${error}`)
+        })
     } catch (error) {
       console.error(`Error saving JSON file: ${error}`)
       throw error

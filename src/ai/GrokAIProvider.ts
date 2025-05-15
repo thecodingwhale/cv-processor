@@ -16,11 +16,12 @@ interface ModelPricing {
 }
 
 const GROK_AI_PRICING: Record<string, ModelPricing> = {
-  'grok-2-vision-1212': { input: 0.008, output: 0.024 },
-  'grok-2': { input: 0.003, output: 0.015 },
+  'grok-3': { input: 0.003, output: 0.015 },
+  'grok-2-vision-1212': { input: 0.002, output: 0.01 },
+  'grok-2': { input: 0.002, output: 0.01 },
   'grok-1': { input: 0.0001, output: 0.0002 }, // Older model with lower pricing
   // Default
-  default: { input: 0.01, output: 0.03 },
+  default: { input: 0.002, output: 0.01 },
 }
 
 export class GrokAIProvider implements AIProvider {

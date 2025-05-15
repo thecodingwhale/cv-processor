@@ -21,11 +21,13 @@ interface ModelPricing {
 const AZURE_OPENAI_PRICING: Record<string, ModelPricing> = {
   'gpt-4': { input: 0.03, output: 0.06 },
   'gpt-4-turbo': { input: 0.01, output: 0.03 },
-  'gpt-4o': { input: 0.005, output: 0.015 },
-  'gpt-4.1': { input: 0.01, output: 0.03 },
-  'gpt-3.5-turbo': { input: 0.0015, output: 0.002 },
+  'gpt-4o': { input: 0.0025, output: 0.01 },
+  'gpt-4.1': { input: 0.002, output: 0.008 },
+  'gpt-4.1-mini': { input: 0.0006, output: 0.0024 },
+  'gpt-4.1-nano': { input: 0.0001, output: 0.0004 },
+  'gpt-3.5-turbo': { input: 0.002, output: 0.006 },
   // Add more models as needed
-  default: { input: 0.01, output: 0.03 }, // Default fallback pricing
+  default: { input: 0.002, output: 0.008 }, // Default fallback pricing
 }
 
 export class AzureOpenAIProvider implements AIProvider {

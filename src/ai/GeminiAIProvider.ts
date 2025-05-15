@@ -12,11 +12,24 @@ interface ModelPricing {
 }
 
 const GEMINI_PRICING: Record<string, ModelPricing> = {
-  'gemini-1.5-pro': { input: 0.005, output: 0.015 },
-  'gemini-1.5-flash': { input: 0.0005, output: 0.0015 },
+  // Gemini 2.5 models
+  'gemini-2.5-flash': { input: 0.00015, output: 0.0006 },
+  'gemini-2.5-pro': { input: 0.00125, output: 0.01 },
+
+  // Gemini 2.0 models
+  'gemini-2.0-flash': { input: 0.0001, output: 0.0004 },
+  'gemini-2.0-flash-lite': { input: 0.000075, output: 0.0003 },
+
+  // Gemini 1.5 models
+  'gemini-1.5-pro': { input: 0.00125, output: 0.005 },
+  'gemini-1.5-flash': { input: 0.000075, output: 0.0003 },
+  'gemini-1.5-flash-8b': { input: 0.0000375, output: 0.00015 },
+
+  // Legacy models
   'gemini-pro': { input: 0.00125, output: 0.00375 },
-  // Add more models as needed
-  default: { input: 0.005, output: 0.015 }, // Default fallback pricing
+
+  // Default fallback pricing (using Gemini 1.5 Pro as baseline)
+  default: { input: 0.00125, output: 0.005 },
 }
 
 export class GeminiAIProvider implements AIProvider {

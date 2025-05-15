@@ -28,6 +28,12 @@ interface Report {
     completeness?: number
     structure?: number
     outputFile: string
+    tokenUsage?: {
+      totalTokens: number
+      inputTokens: number
+      outputTokens: number
+      estimatedCost?: number
+    }
   }[]
 }
 
@@ -67,6 +73,57 @@ export async function mergeReports(outputDir: string): Promise<string> {
 
     const accuracyRows = accuracyTableMatch[1].trim().split('\n')
 
+    // Extract the token usage comparison table if available
+    const tokenUsageMatch = content.match(
+      /## Token Usage Comparison\n\n\|.*\|.*\|\n\|.*\|.*\|\n((?:\|.*\|\n)*)/
+    )
+
+    // Map to store token usage by provider and model
+    const tokenUsageByModel: Record<
+      string,
+      {
+        inputTokens: number
+        outputTokens: number
+        totalTokens: number
+        estimatedCost?: number
+      }
+    > = {}
+
+    // Process token usage data if available
+    if (tokenUsageMatch) {
+      const tokenUsageRows = tokenUsageMatch[1].trim().split('\n')
+
+      for (const row of tokenUsageRows) {
+        const columns = row.split('|').map((col) => col.trim())
+        if (columns.length < 7) continue
+
+        const provider = columns[1]
+        const model = columns[2]
+        const inputTokens = columns[3] !== 'N/A' ? parseInt(columns[3]) : 0
+        const outputTokens = columns[4] !== 'N/A' ? parseInt(columns[4]) : 0
+        const totalTokens = columns[5] !== 'N/A' ? parseInt(columns[5]) : 0
+
+        // Parse estimated cost (remove $ and convert to float)
+        let estimatedCost: number | undefined = undefined
+        if (columns[6] !== 'N/A') {
+          const costStr = columns[6].replace('$', '')
+          estimatedCost = parseFloat(costStr)
+          if (isNaN(estimatedCost)) estimatedCost = undefined
+        }
+
+        // Create a key to match with execution data
+        const key = `${provider}_${model}`
+
+        // Store token usage data
+        tokenUsageByModel[key] = {
+          inputTokens,
+          outputTokens,
+          totalTokens,
+          estimatedCost,
+        }
+      }
+    }
+
     // Process all executions with their times and output files
     const executions: Record<
       string,
@@ -80,7 +137,29 @@ export async function mergeReports(outputDir: string): Promise<string> {
       const provider = columns[1]
       const model = columns[2]
       const timeStr = columns[3]
-      const outputFileLink = columns[5]
+      const outputFileLink = columns[columns.length - 2] // Account for potential additional columns
+
+      // Try to extract token usage directly from the table if available
+      let totalTokens: number | undefined = undefined
+      let estimatedCost: number | undefined = undefined
+
+      // If we have token usage column (depends on table format)
+      if (columns.length >= 7) {
+        const tokenUsageStr = columns[4]
+        if (tokenUsageStr !== 'N/A') {
+          totalTokens = parseInt(tokenUsageStr)
+          if (isNaN(totalTokens)) totalTokens = undefined
+        }
+
+        // If we have estimated cost column
+        if (columns.length >= 8) {
+          const costStr = columns[5].replace('$', '')
+          if (costStr !== 'N/A') {
+            estimatedCost = parseFloat(costStr)
+            if (isNaN(estimatedCost)) estimatedCost = undefined
+          }
+        }
+      }
 
       // Extract processing time
       const time = parseFloat(timeStr)
@@ -126,6 +205,9 @@ export async function mergeReports(outputDir: string): Promise<string> {
       // Find matching execution data
       const key = `${provider}_${model}`
       const execution = executions[key] || { processingTime: 0, outputFile: '' }
+
+      // Get token usage data if available
+      const tokenUsage = tokenUsageByModel[key]
 
       // Update provider metrics
       const providerKey = provider
@@ -194,6 +276,19 @@ export async function mergeReports(outputDir: string): Promise<string> {
         completeness,
         structure,
         outputFile: path.join(dirName, execution.outputFile),
+        tokenUsage: tokenUsage
+          ? {
+              totalTokens: tokenUsage.totalTokens || 0,
+              inputTokens: tokenUsage.inputTokens || 0,
+              outputTokens: tokenUsage.outputTokens || 0,
+              estimatedCost: tokenUsage.estimatedCost || 0,
+            }
+          : {
+              totalTokens: 0,
+              inputTokens: 0,
+              outputTokens: 0,
+              estimatedCost: 0,
+            },
       })
     }
 
@@ -244,7 +339,39 @@ export async function mergeReports(outputDir: string): Promise<string> {
   }
 
   // Generate markdown report
-  return generateMarkdownReport(report)
+  return generateMarkdownReport(await loadTokenUsageData(report))
+}
+
+/**
+ * Load token usage data from JSON files
+ */
+async function loadTokenUsageData(report: Report): Promise<Report> {
+  // Process each run to extract token usage from JSON files
+  for (const run of report.allRuns) {
+    try {
+      // Read the output file to get token usage information
+      if (fs.existsSync(run.outputFile)) {
+        const data = JSON.parse(fs.readFileSync(run.outputFile, 'utf8'))
+
+        // Check if token usage information is available in metadata
+        if (data.metadata && data.metadata.tokenUsage) {
+          run.tokenUsage = {
+            totalTokens: data.metadata.tokenUsage.totalTokens || 0,
+            inputTokens: data.metadata.tokenUsage.inputTokens || 0,
+            outputTokens: data.metadata.tokenUsage.outputTokens || 0,
+            estimatedCost: data.metadata.tokenUsage.estimatedCost || 0,
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `Error loading token usage data from ${run.outputFile}:`,
+        error
+      )
+    }
+  }
+
+  return report
 }
 
 function generateMarkdownReport(report: Report): string {
@@ -337,6 +464,73 @@ function generateMarkdownReport(report: Report): string {
     } | ${model.processingTime.toFixed(2)} | ${model.count} |\n`
   }
 
+  // Add token usage comparison by model
+  markdown += `\n## Token Usage Comparison by Model\n\n`
+  markdown += `| Provider | Model | Avg Total Tokens | Avg Input Tokens | Avg Output Tokens | Avg Est. Cost |\n`
+  markdown += `|----------|-------|-----------------|-----------------|------------------|-------------|\n`
+
+  // Calculate token usage for each model
+  const modelTokenUsage = new Map<
+    string,
+    {
+      totalTokens: number
+      inputTokens: number
+      outputTokens: number
+      estimatedCost: number
+      count: number
+    }
+  >()
+
+  for (const run of report.allRuns) {
+    const modelKey = `${run.provider}_${run.model}`
+
+    // Skip if no token usage info
+    if (!run.tokenUsage) continue
+
+    if (!modelTokenUsage.has(modelKey)) {
+      modelTokenUsage.set(modelKey, {
+        totalTokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        estimatedCost: 0,
+        count: 0,
+      })
+    }
+
+    const usage = modelTokenUsage.get(modelKey)!
+    usage.totalTokens += run.tokenUsage.totalTokens || 0
+    usage.inputTokens += run.tokenUsage.inputTokens || 0
+    usage.outputTokens += run.tokenUsage.outputTokens || 0
+    usage.estimatedCost += run.tokenUsage.estimatedCost || 0
+    usage.count++
+  }
+
+  // Sort models by average total tokens (descending)
+  const sortedModelsByTokens = [...modelTokenUsage.entries()]
+    .map(([key, usage]) => {
+      const [provider, model] = key.split('_')
+      return {
+        provider,
+        model,
+        avgTotalTokens: usage.totalTokens / usage.count,
+        avgInputTokens: usage.inputTokens / usage.count,
+        avgOutputTokens: usage.outputTokens / usage.count,
+        avgEstimatedCost: usage.estimatedCost / usage.count,
+        count: usage.count,
+      }
+    })
+    .sort((a, b) => b.avgTotalTokens - a.avgTotalTokens)
+
+  for (const model of sortedModelsByTokens) {
+    markdown += `| ${model.provider} | ${
+      model.model
+    } | ${model.avgTotalTokens.toFixed(0)} | ${model.avgInputTokens.toFixed(
+      0
+    )} | ${model.avgOutputTokens.toFixed(
+      0
+    )} | $${model.avgEstimatedCost.toFixed(4)} |\n`
+  }
+
   markdown += `\n## Best Overall (Combined Accuracy & Speed)\n\n`
   markdown += `| Provider | Model | Accuracy | Processing Time (s) | Combined Score |\n`
   markdown += `|----------|-------|----------|---------------------|---------------|\n`
@@ -375,13 +569,44 @@ function generateMarkdownReport(report: Report): string {
     2
   )}s average processing time.\n\n`
 
+  // Most cost-effective model
+  if (sortedModelsByTokens.length > 0) {
+    const modelsByEfficiency = [...sortedModelsByTokens]
+      .filter((m) => m.avgEstimatedCost > 0 && m.avgTotalTokens > 0)
+      .map((m) => ({
+        ...m,
+        tokenCostRatio: m.avgTotalTokens / m.avgEstimatedCost,
+      }))
+      .sort((a, b) => b.tokenCostRatio - a.tokenCostRatio)
+
+    if (modelsByEfficiency.length > 0) {
+      const bestCostModel = modelsByEfficiency[0]
+      markdown += `### Most Cost-Effective Model\n`
+      markdown += `**${bestCostModel.provider} (${
+        bestCostModel.model
+      })** with ${bestCostModel.avgTotalTokens.toFixed(
+        0
+      )} tokens at $${bestCostModel.avgEstimatedCost.toFixed(
+        4
+      )} average cost.\n\n`
+    }
+  }
+
   markdown += `## All Runs\n\n`
-  markdown += `| CV | Provider | Model | Accuracy | Processing Time (s) |\n`
-  markdown += `|----|----------|-------|----------|---------------------|\n`
+  markdown += `| CV | Provider | Model | Accuracy | Processing Time (s) | Total Tokens | Est. Cost |\n`
+  markdown += `|----|----------|-------|----------|---------------------|--------------|----------|\n`
   for (const run of report.allRuns) {
+    const totalTokens = run.tokenUsage ? run.tokenUsage.totalTokens : 'N/A'
+    const estCost =
+      run.tokenUsage && run.tokenUsage.estimatedCost
+        ? `$${run.tokenUsage.estimatedCost.toFixed(4)}`
+        : 'N/A'
+
     markdown += `| ${run.cvName} | ${run.provider} | ${run.model} | ${(
       run.accuracy * 100
-    ).toFixed(1)}% | ${run.processingTime.toFixed(2)} |\n`
+    ).toFixed(1)}% | ${run.processingTime.toFixed(
+      2
+    )} | ${totalTokens} | ${estCost} |\n`
   }
 
   return markdown
