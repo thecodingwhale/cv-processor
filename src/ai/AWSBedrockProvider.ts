@@ -3,7 +3,7 @@ import {
   ConverseCommand,
 } from '@aws-sdk/client-bedrock-runtime'
 import { jsonrepair } from 'jsonrepair'
-import { AIModelConfig, AIProvider } from '../types/AIProvider'
+import { AIModelConfig, AIProvider, TokenUsageInfo } from '../types/AIProvider'
 import { replaceUUIDv4Placeholders } from '../utils/data'
 
 export interface AWSBedrockConfig extends Omit<AIModelConfig, 'apiKey'> {
@@ -11,6 +11,32 @@ export interface AWSBedrockConfig extends Omit<AIModelConfig, 'apiKey'> {
   accessKeyId?: string
   secretAccessKey?: string
   apiKey?: string
+}
+
+/**
+ * Pricing information for AWS Bedrock models (USD per 1K tokens)
+ */
+interface ModelPricing {
+  input: number
+  output: number
+}
+
+const AWS_BEDROCK_PRICING: Record<string, ModelPricing> = {
+  // Amazon models
+  'apac.amazon.nova-lite-v1:0': { input: 0.0003, output: 0.0004 },
+  'apac.amazon.nova-v1:0': { input: 0.0015, output: 0.002 },
+  // Anthropic Claude models
+  'anthropic.claude-3-haiku-20240307-v1:0': { input: 0.00125, output: 0.00375 },
+  'anthropic.claude-3-sonnet-20240229-v1:0': { input: 0.003, output: 0.015 },
+  'anthropic.claude-3-opus-20240229-v1:0': { input: 0.015, output: 0.075 },
+  // AI21 Jamba
+  'ai21.jamba-1.5-mini': { input: 0.0003, output: 0.0015 },
+  'ai21.jamba-1.5': { input: 0.0013, output: 0.0063 },
+  // Meta Llama
+  'meta.llama3-8b-instruct-v1:0': { input: 0.0002, output: 0.0002 },
+  'meta.llama3-70b-instruct-v1:0': { input: 0.00075, output: 0.00095 },
+  // Default
+  default: { input: 0.001, output: 0.002 },
 }
 
 export class AWSBedrockProvider implements AIProvider {
@@ -67,11 +93,46 @@ export class AWSBedrockProvider implements AIProvider {
     })
   }
 
+  /**
+   * Calculate estimated cost based on token usage and model
+   */
+  private calculateCost(
+    promptTokens: number,
+    completionTokens: number,
+    model: string
+  ): number {
+    // First try to match by specific model name
+    let pricing = AWS_BEDROCK_PRICING[model]
+
+    // If not found, try to match by partial model name
+    if (!pricing) {
+      const matchingKey = Object.keys(AWS_BEDROCK_PRICING).find((key) =>
+        model.toLowerCase().includes(key.toLowerCase())
+      )
+      pricing = matchingKey
+        ? AWS_BEDROCK_PRICING[matchingKey]
+        : AWS_BEDROCK_PRICING['default']
+    }
+
+    const inputCost = (promptTokens / 1000) * pricing.input
+    const outputCost = (completionTokens / 1000) * pricing.output
+
+    return inputCost + outputCost
+  }
+
+  /**
+   * Estimate token count based on text content
+   */
+  private estimateTokenCount(text: string): number {
+    // Simple estimation: ~4 characters per token for English text
+    return Math.ceil(text.length / 4)
+  }
+
   async extractStructuredData<T>(
     imageUrls: string[],
     dataSchema: object,
     instructions: string
-  ): Promise<T> {
+  ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
     try {
       console.log(`[AWSBedrockProvider] Processing ${imageUrls.length} images`)
       console.log(
@@ -193,6 +254,29 @@ export class AWSBedrockProvider implements AIProvider {
         responseText.substring(0, 200)
       )
 
+      // AWS Bedrock doesn't always provide token usage in a standard way
+      // Use estimation for token usage
+      const promptTokens = this.estimateTokenCount(
+        prompt + JSON.stringify(imageUrls)
+      )
+      const completionTokens = this.estimateTokenCount(responseText)
+      const totalTokens = promptTokens + completionTokens
+
+      // Calculate estimated cost
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        modelId
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
       try {
         let fixedJson
         try {
@@ -206,6 +290,7 @@ export class AWSBedrockProvider implements AIProvider {
 
         return {
           ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
         }
       } catch (jsonError) {
         console.error(

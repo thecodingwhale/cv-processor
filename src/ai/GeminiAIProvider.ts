@@ -3,6 +3,22 @@ import { jsonrepair } from 'jsonrepair'
 import { AIModelConfig, AIProvider, TokenUsageInfo } from '../types/AIProvider'
 import { replaceUUIDv4Placeholders } from '../utils/data'
 
+/**
+ * Pricing information for Gemini models (USD per 1K tokens)
+ */
+interface ModelPricing {
+  input: number
+  output: number
+}
+
+const GEMINI_PRICING: Record<string, ModelPricing> = {
+  'gemini-1.5-pro': { input: 0.005, output: 0.015 },
+  'gemini-1.5-flash': { input: 0.0005, output: 0.0015 },
+  'gemini-pro': { input: 0.00125, output: 0.00375 },
+  // Add more models as needed
+  default: { input: 0.005, output: 0.015 }, // Default fallback pricing
+}
+
 export class GeminiAIProvider implements AIProvider {
   private generativeModel: GenerativeModel
   private config: AIModelConfig
@@ -20,6 +36,30 @@ export class GeminiAIProvider implements AIProvider {
         candidateCount: 1,
       },
     })
+  }
+
+  /**
+   * Calculate estimated cost based on token usage and model
+   */
+  private calculateCost(
+    promptTokens: number,
+    completionTokens: number,
+    model: string
+  ): number {
+    const pricing = GEMINI_PRICING[model] || GEMINI_PRICING['default']
+
+    const inputCost = (promptTokens / 1000) * pricing.input
+    const outputCost = (completionTokens / 1000) * pricing.output
+
+    return inputCost + outputCost
+  }
+
+  /**
+   * Estimate token count based on text content
+   */
+  private estimateTokenCount(text: string): number {
+    // Simple estimation: ~4 characters per token for English text
+    return Math.ceil(text.length / 4)
   }
 
   async extractStructuredData<T>(
@@ -44,6 +84,28 @@ export class GeminiAIProvider implements AIProvider {
       const response = await result.response
       const responseText = response.text()
 
+      // Gemini API doesn't provide easy access to token counts like OpenAI
+      // Use estimation instead
+      const promptTokens = this.estimateTokenCount(prompt)
+      const completionTokens = this.estimateTokenCount(responseText)
+      const totalTokens = promptTokens + completionTokens
+
+      // Calculate estimated cost
+      const model = this.config.model || 'gemini-1.5-pro'
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        model
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
       try {
         let fixedJson
         try {
@@ -57,9 +119,10 @@ export class GeminiAIProvider implements AIProvider {
 
         return {
           ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
         }
       } catch (jsonError) {
-        console.error('Error parsing JSON from OpenAI response:', jsonError)
+        console.error('Error parsing JSON from Gemini response:', jsonError)
         throw jsonError
       }
     } catch (error) {

@@ -59,6 +59,15 @@ export class AICVProcessor {
   }
 
   /**
+   * Estimate token count based on text content
+   * This is a fallback when actual token counts aren't available
+   */
+  private estimateTokenCount(text: string): number {
+    // Simple estimation: ~4 characters per token for English text
+    return Math.ceil(text.length / 4)
+  }
+
+  /**
    * Process a CV PDF and extract structured information using AI
    */
   async processCv(pdfPath: string): Promise<CVData> {
@@ -121,6 +130,44 @@ export class AICVProcessor {
           sourceFile: path.basename(pdfPath),
           processingTime: processingTime,
           ...this.aiProvider.getModelInfo(),
+        }
+
+        // Add token usage information if available from AI provider
+        if (cvData.tokenUsage) {
+          cvData.metadata.tokenUsage = {
+            inputTokens: cvData.tokenUsage.promptTokens,
+            outputTokens: cvData.tokenUsage.completionTokens,
+            totalTokens: cvData.tokenUsage.totalTokens,
+            estimatedCost: cvData.tokenUsage.estimatedCost,
+          }
+
+          if (this.verbose) {
+            console.log(
+              `[AICVProcessor] Token usage:`,
+              cvData.metadata.tokenUsage
+            )
+          }
+        } else {
+          // Estimate tokens if not provided by the AI provider
+          const estimatedInputTokens = this.estimateTokenCount(
+            instructions + JSON.stringify(imageUrls)
+          )
+          const estimatedOutputTokens = this.estimateTokenCount(
+            JSON.stringify(cvData)
+          )
+
+          cvData.metadata.tokenUsage = {
+            inputTokens: estimatedInputTokens,
+            outputTokens: estimatedOutputTokens,
+            totalTokens: estimatedInputTokens + estimatedOutputTokens,
+          }
+
+          if (this.verbose) {
+            console.log(
+              `[AICVProcessor] Estimated token usage:`,
+              cvData.metadata.tokenUsage
+            )
+          }
         }
 
         // Try to use consensus-based scoring if available

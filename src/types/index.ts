@@ -16,6 +16,12 @@ export interface CVData {
       missingFields: string[]
       consensusSource?: string
     }
+    tokenUsage?: {
+      inputTokens: number
+      outputTokens: number
+      totalTokens: number
+      estimatedCost?: number
+    }
   }
 }
 

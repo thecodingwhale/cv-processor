@@ -3,6 +3,23 @@ import { OpenAI } from 'openai'
 import { AIModelConfig, AIProvider, TokenUsageInfo } from '../types/AIProvider'
 import { replaceUUIDv4Placeholders } from '../utils/data'
 
+/**
+ * Pricing information for OpenAI models (USD per 1K tokens)
+ */
+interface ModelPricing {
+  input: number
+  output: number
+}
+
+const OPENAI_PRICING: Record<string, ModelPricing> = {
+  'gpt-4o': { input: 0.005, output: 0.015 },
+  'gpt-4-turbo': { input: 0.01, output: 0.03 },
+  'gpt-4': { input: 0.03, output: 0.06 },
+  'gpt-3.5-turbo': { input: 0.0015, output: 0.002 },
+  // Add more models as needed
+  default: { input: 0.01, output: 0.03 }, // Default fallback pricing
+}
+
 export class OpenAIProvider implements AIProvider {
   private openai: OpenAI
   private config: AIModelConfig
@@ -12,6 +29,22 @@ export class OpenAIProvider implements AIProvider {
     this.openai = new OpenAI({
       apiKey: config.apiKey,
     })
+  }
+
+  /**
+   * Calculate estimated cost based on token usage and model
+   */
+  private calculateCost(
+    promptTokens: number,
+    completionTokens: number,
+    model: string
+  ): number {
+    const pricing = OPENAI_PRICING[model] || OPENAI_PRICING['default']
+
+    const inputCost = (promptTokens / 1000) * pricing.input
+    const outputCost = (completionTokens / 1000) * pricing.output
+
+    return inputCost + outputCost
   }
 
   async extractStructuredData<T>(
@@ -57,6 +90,27 @@ export class OpenAIProvider implements AIProvider {
 
       const responseText = completion.choices[0]?.message?.content || '{}'
 
+      // Extract token usage information
+      const promptTokens = completion.usage?.prompt_tokens || 0
+      const completionTokens = completion.usage?.completion_tokens || 0
+      const totalTokens = completion.usage?.total_tokens || 0
+
+      // Calculate estimated cost
+      const model = this.config.model || 'gpt-4o'
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        model
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
       try {
         let fixedJson
         try {
@@ -70,6 +124,7 @@ export class OpenAIProvider implements AIProvider {
 
         return {
           ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
         }
       } catch (jsonError) {
         console.error('Error parsing JSON from OpenAI response:', jsonError)

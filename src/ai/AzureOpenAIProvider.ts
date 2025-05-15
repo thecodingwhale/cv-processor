@@ -9,6 +9,25 @@ export interface AzureOpenAIConfig extends AIModelConfig {
   deploymentName?: string
 }
 
+/**
+ * Pricing information for Azure OpenAI models (USD per 1K tokens)
+ * These are similar to OpenAI prices, but can vary based on Azure pricing tiers
+ */
+interface ModelPricing {
+  input: number
+  output: number
+}
+
+const AZURE_OPENAI_PRICING: Record<string, ModelPricing> = {
+  'gpt-4': { input: 0.03, output: 0.06 },
+  'gpt-4-turbo': { input: 0.01, output: 0.03 },
+  'gpt-4o': { input: 0.005, output: 0.015 },
+  'gpt-4.1': { input: 0.01, output: 0.03 },
+  'gpt-3.5-turbo': { input: 0.0015, output: 0.002 },
+  // Add more models as needed
+  default: { input: 0.01, output: 0.03 }, // Default fallback pricing
+}
+
 export class AzureOpenAIProvider implements AIProvider {
   private client: AzureOpenAI
   private config: AzureOpenAIConfig
@@ -33,6 +52,41 @@ export class AzureOpenAIProvider implements AIProvider {
       apiVersion: config.apiVersion || '2024-04-01-preview',
       deployment: deploymentName,
     })
+  }
+
+  /**
+   * Calculate estimated cost based on token usage and model
+   */
+  private calculateCost(
+    promptTokens: number,
+    completionTokens: number,
+    model: string
+  ): number {
+    // First try to match by specific model name
+    let pricing = AZURE_OPENAI_PRICING[model]
+
+    // If not found, try to match by partial model name
+    if (!pricing) {
+      const matchingKey = Object.keys(AZURE_OPENAI_PRICING).find((key) =>
+        model.toLowerCase().includes(key.toLowerCase())
+      )
+      pricing = matchingKey
+        ? AZURE_OPENAI_PRICING[matchingKey]
+        : AZURE_OPENAI_PRICING['default']
+    }
+
+    const inputCost = (promptTokens / 1000) * pricing.input
+    const outputCost = (completionTokens / 1000) * pricing.output
+
+    return inputCost + outputCost
+  }
+
+  /**
+   * Estimate token count based on text content
+   */
+  private estimateTokenCount(text: string): number {
+    // Simple estimation: ~4 characters per token for English text
+    return Math.ceil(text.length / 4)
   }
 
   async extractStructuredData<T>(
@@ -91,6 +145,32 @@ export class AzureOpenAIProvider implements AIProvider {
 
       const responseText = completion.choices[0]?.message?.content || '{}'
 
+      // Extract token usage information
+      const promptTokens =
+        completion.usage?.prompt_tokens ||
+        this.estimateTokenCount(prompt + JSON.stringify(imageUrls))
+      const completionTokens =
+        completion.usage?.completion_tokens ||
+        this.estimateTokenCount(responseText)
+      const totalTokens =
+        completion.usage?.total_tokens || promptTokens + completionTokens
+
+      // Calculate estimated cost
+      const model = this.config.deploymentName || this.config.model || 'gpt-4.1'
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        model
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
       try {
         let fixedJson
         try {
@@ -104,6 +184,7 @@ export class AzureOpenAIProvider implements AIProvider {
 
         return {
           ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
         }
       } catch (jsonError) {
         console.error('Error parsing JSON from OpenAI response:', jsonError)

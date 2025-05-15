@@ -7,6 +7,22 @@ export interface GrokAIConfig extends AIModelConfig {
   // No additional config needed beyond apiKey and model
 }
 
+/**
+ * Pricing information for Grok AI models (USD per 1K tokens)
+ */
+interface ModelPricing {
+  input: number
+  output: number
+}
+
+const GROK_AI_PRICING: Record<string, ModelPricing> = {
+  'grok-2-vision-1212': { input: 0.008, output: 0.024 },
+  'grok-2': { input: 0.003, output: 0.015 },
+  'grok-1': { input: 0.0001, output: 0.0002 }, // Older model with lower pricing
+  // Default
+  default: { input: 0.01, output: 0.03 },
+}
+
 export class GrokAIProvider implements AIProvider {
   private client: OpenAI
   private config: GrokAIConfig
@@ -24,6 +40,41 @@ export class GrokAIProvider implements AIProvider {
       apiKey: config.apiKey,
       baseURL: 'https://api.x.ai/v1',
     })
+  }
+
+  /**
+   * Calculate estimated cost based on token usage and model
+   */
+  private calculateCost(
+    promptTokens: number,
+    completionTokens: number,
+    model: string
+  ): number {
+    // First try to match by specific model name
+    let pricing = GROK_AI_PRICING[model]
+
+    // If not found, try to match by partial model name
+    if (!pricing) {
+      const matchingKey = Object.keys(GROK_AI_PRICING).find((key) =>
+        model.toLowerCase().includes(key.toLowerCase())
+      )
+      pricing = matchingKey
+        ? GROK_AI_PRICING[matchingKey]
+        : GROK_AI_PRICING['default']
+    }
+
+    const inputCost = (promptTokens / 1000) * pricing.input
+    const outputCost = (completionTokens / 1000) * pricing.output
+
+    return inputCost + outputCost
+  }
+
+  /**
+   * Estimate token count based on text content
+   */
+  private estimateTokenCount(text: string): number {
+    // Simple estimation: ~4 characters per token for English text
+    return Math.ceil(text.length / 4)
   }
 
   async extractStructuredData<T>(
@@ -73,6 +124,31 @@ export class GrokAIProvider implements AIProvider {
 
       const responseText = completion.choices[0]?.message?.content || '{}'
 
+      // Extract token usage information
+      const promptTokens =
+        completion.usage?.prompt_tokens ||
+        this.estimateTokenCount(prompt + JSON.stringify(imageUrls))
+      const completionTokens =
+        completion.usage?.completion_tokens ||
+        this.estimateTokenCount(responseText)
+      const totalTokens =
+        completion.usage?.total_tokens || promptTokens + completionTokens
+
+      // Calculate estimated cost
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        modelName
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
       try {
         let fixedJson
         try {
@@ -84,6 +160,7 @@ export class GrokAIProvider implements AIProvider {
         const parsedJson = JSON.parse(fixedJson)
         return {
           ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
         }
       } catch (jsonError) {
         console.error('Error parsing JSON from OpenAI response:', jsonError)
