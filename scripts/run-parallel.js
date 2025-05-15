@@ -3,6 +3,9 @@
 const { spawn } = require('child_process')
 const path = require('path')
 const fs = require('fs')
+const {
+  ConsensusAccuracyScorer,
+} = require('../dist/utils/ConsensusAccuracyScorer')
 
 // Configuration of providers and models to run
 const CONFIGURATIONS = [
@@ -215,6 +218,31 @@ function generateMarkdownReport(
         ).toFixed(2)
       : '0.00'
 
+  // Check if we have consensus data to compare against
+  let consensusInfo = ''
+  const consensusScorer = new ConsensusAccuracyScorer()
+  const cvFilename = path.basename(cvPath)
+  let hasConsensusBaseline = false
+
+  try {
+    // Check if baseMetrics.json exists and contains this CV
+    const cacheDir = path.join(process.cwd(), 'cache')
+    const baseMetricsFile = path.join(cacheDir, 'baseMetrics.json')
+
+    if (fs.existsSync(baseMetricsFile)) {
+      const baseMetrics = JSON.parse(fs.readFileSync(baseMetricsFile, 'utf8'))
+      if (baseMetrics.metrics && baseMetrics.metrics[cvFilename]) {
+        hasConsensusBaseline = true
+        consensusInfo = `\n\n## Consensus Information\n\nThis CV was evaluated against a consensus baseline created from ${baseMetrics.metrics[cvFilename].providers.length} AI providers.\n`
+        consensusInfo += `\nConsensus strength: ${(
+          baseMetrics.metrics[cvFilename].confidence.overall * 100
+        ).toFixed(1)}%\n`
+      }
+    }
+  } catch (error) {
+    console.warn(`Error checking for consensus baseline: ${error.message}`)
+  }
+
   // Build markdown string
   let md = `# CV Processing Report\n\n`
   md += `**CV**: ${path.basename(cvPath)}\n`
@@ -225,7 +253,11 @@ function generateMarkdownReport(
   md += `- **Total Providers**: ${totalProviders}\n`
   md += `- **Successful**: ${successResults.length}\n`
   md += `- **Failed**: ${failedResults.length}\n`
-  md += `- **Success Rate**: ${successRate}%\n\n`
+  md += `- **Success Rate**: ${successRate}%\n`
+  if (hasConsensusBaseline) {
+    md += `- **Consensus Baseline**: Yes\n`
+  }
+  md += `\n`
 
   if (successResults.length > 0) {
     md += `## Successful Executions\n\n`
@@ -292,6 +324,11 @@ function generateMarkdownReport(
     md += `No successful executions to compare.\n`
   }
 
+  // Add consensus information if available
+  if (hasConsensusBaseline) {
+    md += consensusInfo
+  }
+
   // Add accuracy comparison if available
   const resultsWithAccuracy = successResults.filter((result) => {
     if (!fs.existsSync(result.outputFile)) return false
@@ -310,8 +347,22 @@ function generateMarkdownReport(
 
   if (resultsWithAccuracy.length > 0) {
     md += `\n## Accuracy Comparison\n\n`
-    md += `| Provider | Model | Overall | Categories | Completeness | Structure |\n`
-    md += `|----------|-------|---------|------------|--------------|----------|\n`
+
+    // Check if we're using consensus-based accuracy
+    const hasConsensusResults = resultsWithAccuracy.some((result) => {
+      const data = JSON.parse(fs.readFileSync(result.outputFile, 'utf8'))
+      return data.metadata?.accuracy?.consensusSource
+    })
+
+    if (hasConsensusResults) {
+      // Table for consensus-based accuracy
+      md += `| Provider | Model | Overall | Field Accuracy | Completeness | Structure |\n`
+      md += `|----------|-------|---------|----------------|--------------|----------|\n`
+    } else {
+      // Table for standard accuracy
+      md += `| Provider | Model | Overall | Categories | Completeness | Structure |\n`
+      md += `|----------|-------|---------|------------|--------------|----------|\n`
+    }
 
     // Sort by overall accuracy (highest first)
     resultsWithAccuracy.sort((a, b) => {
@@ -324,11 +375,21 @@ function generateMarkdownReport(
       const data = JSON.parse(fs.readFileSync(result.outputFile, 'utf8'))
       const accuracy = data.metadata.accuracy
 
-      md += `| ${result.provider} | ${result.model || 'default'} | ${
-        accuracy.overall
-      }% | ${accuracy.categoryAssignment}% | ${accuracy.completeness}% | ${
-        accuracy.structuralValidity
-      }% |\n`
+      if (accuracy.consensusSource) {
+        // Consensus-based accuracy metrics
+        md += `| ${result.provider} | ${result.model || 'default'} | ${
+          accuracy.overall
+        }% | ${accuracy.fieldAccuracy}% | ${accuracy.completeness}% | ${
+          accuracy.structuralFidelity
+        }% |\n`
+      } else {
+        // Standard accuracy metrics
+        md += `| ${result.provider} | ${result.model || 'default'} | ${
+          accuracy.overall
+        }% | ${accuracy.categoryAssignment}% | ${accuracy.completeness}% | ${
+          accuracy.structuralValidity
+        }% |\n`
+      }
     })
 
     // Find the best performer in each category

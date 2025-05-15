@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { CVData, ProcessorOptions } from './types'
 import { AIProvider } from './types/AIProvider'
-import { AccuracyScorer } from './utils/AccuracyScorer'
+import { ConsensusAccuracyScorer } from './utils/ConsensusAccuracyScorer'
 import { convertPdfToImages } from './utils/document'
 
 /**
@@ -115,38 +115,45 @@ export class AICVProcessor {
           )} seconds`
         )
 
-        // Evaluate accuracy of the extracted data
-        const accuracyResult = AccuracyScorer.evaluateAccuracy(cvData)
-        console.log(
-          `[AICVProcessor] Accuracy score: ${accuracyResult.overall}%`
-        )
-
-        if (this.verbose) {
-          console.log(
-            `[AICVProcessor] Category assignment: ${accuracyResult.categoryAssignment}%`
-          )
-          console.log(
-            `[AICVProcessor] Completeness: ${accuracyResult.completeness}%`
-          )
-          console.log(
-            `[AICVProcessor] Structural validity: ${accuracyResult.structuralValidity}%`
-          )
-          if (accuracyResult.missingFields.length > 0) {
-            console.log(
-              `[AICVProcessor] Missing fields: ${accuracyResult.missingFields.join(
-                ', '
-              )}`
-            )
-          }
-        }
-
-        // Add metadata
+        // Add metadata before accuracy evaluation
         cvData.metadata = {
           processedDate: new Date().toISOString(),
           sourceFile: path.basename(pdfPath),
           processingTime: processingTime,
-          accuracy: accuracyResult,
           ...this.aiProvider.getModelInfo(),
+        }
+
+        // Try to use consensus-based scoring if available
+        const consensusScorer = new ConsensusAccuracyScorer()
+        const consensusResult = consensusScorer.evaluateAccuracy(cvData)
+
+        console.log(
+          `[AICVProcessor] Accuracy score: ${consensusResult.overall}%`
+        )
+
+        if (this.verbose) {
+          console.log(
+            `[AICVProcessor] Using consensus-based accuracy from: ${consensusResult.metadata.consensusSource}`
+          )
+          console.log(
+            `[AICVProcessor] Field accuracy: ${consensusResult.fieldAccuracy}%`
+          )
+          console.log(
+            `[AICVProcessor] Completeness: ${consensusResult.completeness}%`
+          )
+          console.log(
+            `[AICVProcessor] Structural fidelity: ${consensusResult.structuralFidelity}%`
+          )
+        }
+
+        // Use consensus-based accuracy metrics
+        cvData.metadata.accuracy = {
+          overall: consensusResult.overall,
+          fieldAccuracy: consensusResult.fieldAccuracy,
+          completeness: consensusResult.completeness,
+          structuralFidelity: consensusResult.structuralFidelity,
+          missingFields: consensusResult.missingFields,
+          consensusSource: consensusResult.metadata.consensusSource,
         }
 
         return cvData

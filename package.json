@@ -8,7 +8,9 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "jest",
-    "parallel": "node scripts/run-parallel.js"
+    "parallel": "node scripts/run-parallel.js",
+    "baseMetrics": "node scripts/generate-base-metrics.js",
+    "updateBaseMetrics": "node scripts/generate-base-metrics.js --update"
   },
   "keywords": [
     "CV",
