@@ -25,7 +25,7 @@ export interface AIProvider {
   /**
    * Extract structured data from text using the AI model
    */
-  extractStructuredData<T>(
+  extractStructuredDataFromImages<T>(
     imageUrls: string[],
     dataSchema: object,
     instructions: string

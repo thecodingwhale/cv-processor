@@ -60,7 +60,7 @@ export class OpenAIProvider implements AIProvider {
     return inputCost + outputCost
   }
 
-  async extractStructuredData<T>(
+  async extractStructuredDataFromImages<T>(
     imageUrls: string[],
     dataSchema: object,
     instructions: string

@@ -91,7 +91,7 @@ export class AzureOpenAIProvider implements AIProvider {
     return Math.ceil(text.length / 4)
   }
 
-  async extractStructuredData<T>(
+  async extractStructuredDataFromImages<T>(
     imageUrls: string[],
     dataSchema: object,
     instructions: string

@@ -111,11 +111,12 @@ export class AICVProcessor {
 
       try {
         // Use AI to extract structured data
-        const cvData = await this.aiProvider.extractStructuredData<CVData>(
-          imageUrls,
-          dataSchema,
-          instructions
-        )
+        const cvData =
+          await this.aiProvider.extractStructuredDataFromImages<CVData>(
+            imageUrls,
+            dataSchema,
+            instructions
+          )
 
         // Calculate processing time
         const processingTime = (new Date().getTime() - startTime) / 1000
