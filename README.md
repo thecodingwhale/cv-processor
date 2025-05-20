@@ -119,6 +119,10 @@ npm start -- process path/to/resume.pdf --use-ai aws --ai-model anthropic.claude
 # Specify a different AI model
 npm start -- process path/to/resume.pdf --ai-model gpt-4o
 npm start -- process path/to/resume.pdf --use-ai gemini --ai-model gemini-1.5-flash
+
+# Specify conversion type (PDF to Images or PDF to Text)
+npm start -- process path/to/resume.pdf --conversion-type pdftoimages
+npm start -- process path/to/resume.pdf --conversion-type pdftotexts
 ```
 
 ### Parallel Processing
