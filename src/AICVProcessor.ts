@@ -1,9 +1,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { CVData, ProcessorOptions } from './types'
-import { AIProvider } from './types/AIProvider'
+import { AIProvider, ConversionType } from './types/AIProvider'
 import { ConsensusAccuracyScorer } from './utils/ConsensusAccuracyScorer'
-import { convertPdfToImages } from './utils/document'
+import { convertPdfToImages, convertPdfToTexts } from './utils/document'
 import { ReportGenerator } from './utils/reportGenerator'
 
 /**
@@ -71,15 +71,16 @@ export class AICVProcessor {
   /**
    * Process a CV PDF and extract structured information using AI
    */
-  async processCv(pdfPath: string): Promise<CVData> {
-    console.log(`Processing CV with AI: ${pdfPath}`)
+  async processCv(
+    pdfPath: string,
+    conversionType: ConversionType = ConversionType.PdfToImages
+  ): Promise<CVData> {
+    console.log(`Processing CV with AI: ${pdfPath} (${conversionType})`)
 
     // Track start time for processing
     const startTime = new Date().getTime()
 
     try {
-      const imageUrls = await convertPdfToImages(pdfPath)
-
       // Define the data schema to match our CVData type
       const dataSchema = {
         type: 'object',
@@ -109,107 +110,118 @@ export class AICVProcessor {
         throw new Error('No instructions found')
       }
 
-      try {
-        // Use AI to extract structured data
-        const cvData =
-          await this.aiProvider.extractStructuredDataFromImages<CVData>(
-            imageUrls,
-            dataSchema,
-            instructions
-          )
+      let cvData: CVData
+      let inputData: string[]
 
-        // Calculate processing time
-        const processingTime = (new Date().getTime() - startTime) / 1000
-        console.log(
-          `[AICVProcessor] Processing completed in ${processingTime.toFixed(
-            2
-          )} seconds`
+      if (conversionType === ConversionType.PdfToImages) {
+        // Convert PDF to images
+        inputData = await convertPdfToImages(pdfPath)
+
+        // Use AI to extract structured data from images
+        cvData = await this.aiProvider.extractStructuredDataFromImages<CVData>(
+          inputData,
+          dataSchema,
+          instructions
         )
+      } else {
+        // Convert PDF to text
+        inputData = await convertPdfToTexts(pdfPath)
 
-        // Add metadata before accuracy evaluation
-        cvData.metadata = {
-          processedDate: new Date().toISOString(),
-          sourceFile: path.basename(pdfPath),
-          processingTime: processingTime,
-          ...this.aiProvider.getModelInfo(),
-        }
-
-        // Add token usage information if available from AI provider
-        if (cvData.tokenUsage) {
-          cvData.metadata.tokenUsage = {
-            inputTokens: cvData.tokenUsage.promptTokens,
-            outputTokens: cvData.tokenUsage.completionTokens,
-            totalTokens: cvData.tokenUsage.totalTokens,
-            estimatedCost: cvData.tokenUsage.estimatedCost,
-          }
-
-          if (this.verbose) {
-            console.log(
-              `[AICVProcessor] Token usage:`,
-              cvData.metadata.tokenUsage
-            )
-          }
-        } else {
-          // Estimate tokens if not provided by the AI provider
-          const estimatedInputTokens = this.estimateTokenCount(
-            instructions + JSON.stringify(imageUrls)
-          )
-          const estimatedOutputTokens = this.estimateTokenCount(
-            JSON.stringify(cvData)
-          )
-
-          cvData.metadata.tokenUsage = {
-            inputTokens: estimatedInputTokens,
-            outputTokens: estimatedOutputTokens,
-            totalTokens: estimatedInputTokens + estimatedOutputTokens,
-          }
-
-          if (this.verbose) {
-            console.log(
-              `[AICVProcessor] Estimated token usage:`,
-              cvData.metadata.tokenUsage
-            )
-          }
-        }
-
-        // Try to use consensus-based scoring if available
-        const consensusScorer = new ConsensusAccuracyScorer()
-        const consensusResult = consensusScorer.evaluateAccuracy(cvData)
-
-        console.log(
-          `[AICVProcessor] Accuracy score: ${consensusResult.overall}%`
+        // Use AI to extract structured data from text
+        cvData = await this.aiProvider.extractStructuredDataFromText<CVData>(
+          inputData,
+          dataSchema,
+          instructions
         )
+      }
+
+      // Calculate processing time
+      const processingTime = (new Date().getTime() - startTime) / 1000
+      console.log(
+        `[AICVProcessor] Processing completed in ${processingTime.toFixed(
+          2
+        )} seconds`
+      )
+
+      // Add metadata before accuracy evaluation
+      cvData.metadata = {
+        processedDate: new Date().toISOString(),
+        sourceFile: path.basename(pdfPath),
+        processingTime: processingTime,
+        conversionType: conversionType,
+        ...this.aiProvider.getModelInfo(),
+      }
+
+      // Add token usage information if available from AI provider
+      if (cvData.tokenUsage) {
+        cvData.metadata.tokenUsage = {
+          inputTokens: cvData.tokenUsage.promptTokens,
+          outputTokens: cvData.tokenUsage.completionTokens,
+          totalTokens: cvData.tokenUsage.totalTokens,
+          estimatedCost: cvData.tokenUsage.estimatedCost,
+        }
 
         if (this.verbose) {
           console.log(
-            `[AICVProcessor] Using consensus-based accuracy from: ${consensusResult.metadata.consensusSource}`
-          )
-          console.log(
-            `[AICVProcessor] Field accuracy: ${consensusResult.fieldAccuracy}%`
-          )
-          console.log(
-            `[AICVProcessor] Completeness: ${consensusResult.completeness}%`
-          )
-          console.log(
-            `[AICVProcessor] Structural fidelity: ${consensusResult.structuralFidelity}%`
+            `[AICVProcessor] Token usage:`,
+            cvData.metadata.tokenUsage
           )
         }
+      } else {
+        // Estimate tokens if not provided by the AI provider
+        const estimatedInputTokens = this.estimateTokenCount(
+          instructions + JSON.stringify(inputData)
+        )
+        const estimatedOutputTokens = this.estimateTokenCount(
+          JSON.stringify(cvData)
+        )
 
-        // Use consensus-based accuracy metrics
-        cvData.metadata.accuracy = {
-          overall: consensusResult.overall,
-          fieldAccuracy: consensusResult.fieldAccuracy,
-          completeness: consensusResult.completeness,
-          structuralFidelity: consensusResult.structuralFidelity,
-          missingFields: consensusResult.missingFields,
-          consensusSource: consensusResult.metadata.consensusSource,
+        cvData.metadata.tokenUsage = {
+          inputTokens: estimatedInputTokens,
+          outputTokens: estimatedOutputTokens,
+          totalTokens: estimatedInputTokens + estimatedOutputTokens,
         }
 
-        return cvData
-      } catch (error) {
-        console.error(`Error processing CV: ${error}`)
-        throw error
+        if (this.verbose) {
+          console.log(
+            `[AICVProcessor] Estimated token usage:`,
+            cvData.metadata.tokenUsage
+          )
+        }
       }
+
+      // Try to use consensus-based scoring if available
+      const consensusScorer = new ConsensusAccuracyScorer()
+      const consensusResult = consensusScorer.evaluateAccuracy(cvData)
+
+      console.log(`[AICVProcessor] Accuracy score: ${consensusResult.overall}%`)
+
+      if (this.verbose) {
+        console.log(
+          `[AICVProcessor] Using consensus-based accuracy from: ${consensusResult.metadata.consensusSource}`
+        )
+        console.log(
+          `[AICVProcessor] Field accuracy: ${consensusResult.fieldAccuracy}%`
+        )
+        console.log(
+          `[AICVProcessor] Completeness: ${consensusResult.completeness}%`
+        )
+        console.log(
+          `[AICVProcessor] Structural fidelity: ${consensusResult.structuralFidelity}%`
+        )
+      }
+
+      // Use consensus-based accuracy metrics
+      cvData.metadata.accuracy = {
+        overall: consensusResult.overall,
+        fieldAccuracy: consensusResult.fieldAccuracy,
+        completeness: consensusResult.completeness,
+        structuralFidelity: consensusResult.structuralFidelity,
+        missingFields: consensusResult.missingFields,
+        consensusSource: consensusResult.metadata.consensusSource,
+      }
+
+      return cvData
     } catch (error) {
       console.error(`Error processing CV: ${error}`)
       throw error

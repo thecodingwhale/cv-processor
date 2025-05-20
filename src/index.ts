@@ -16,7 +16,8 @@ import * as path from 'path'
 import { AICVProcessor } from './AICVProcessor'
 import { AIProviderFactory, AIProviderType } from './ai/AIProviderFactory'
 import { AzureOpenAIConfig } from './ai/AzureOpenAIProvider'
-import { AIModelConfig } from './types/AIProvider'
+import { CVData } from './types'
+import { AIModelConfig, AIProvider, ConversionType } from './types/AIProvider'
 import { mergeReports } from './utils/reportMerger'
 
 // Load environment variables
@@ -48,6 +49,11 @@ program
     '--accuracy-calculator [type]',
     'Type of accuracy calculator to use (traditional, null-based)',
     'traditional'
+  )
+  .option(
+    '--conversion-type <type>',
+    'Type of PDF conversion to use (pdftoimages, pdftotexts)',
+    'pdftoimages'
   )
   .action(async (pdfFile, options) => {
     try {
@@ -164,7 +170,15 @@ program
         verbose: options.verbose,
       })
 
-      const cvData = await processor.processCv(pdfFile)
+      // Process the CV with the specified conversion type
+      const conversionType =
+        options.conversionType === 'pdftotexts'
+          ? ConversionType.PdfToTexts
+          : ConversionType.PdfToImages
+
+      console.log(`Using conversion type: ${conversionType}`)
+      const cvData = await processor.processCv(pdfFile, conversionType)
+
       processor.saveToJson(cvData, outputFile)
 
       const processingTime = (new Date().getTime() - startTime.getTime()) / 1000
@@ -240,3 +254,24 @@ function getDefaultModelForProvider(provider: AIProviderType): string {
       return 'gemini-1.5-pro'
   }
 }
+
+/**
+ * Process a CV PDF and extract structured information using AI
+ * @param pdfPath Path to the PDF file
+ * @param aiProvider AI provider to use for processing
+ * @param options Processing options
+ * @param conversionType Type of conversion to use (default: PdfToTexts)
+ * @returns Promise resolving to structured CV data
+ */
+export async function processCv(
+  pdfPath: string,
+  aiProvider: AIProvider,
+  options: { verbose?: boolean; instructionsPath?: string } = {},
+  conversionType: ConversionType = ConversionType.PdfToTexts
+): Promise<CVData> {
+  const processor = new AICVProcessor(aiProvider, options)
+  return processor.processCv(pdfPath, conversionType)
+}
+
+export { AICVProcessor, ConversionType }
+export type { AIProvider, CVData }
