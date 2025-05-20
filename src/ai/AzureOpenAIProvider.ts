@@ -44,7 +44,7 @@ export class AzureOpenAIProvider implements AIProvider {
       )
     }
 
-    const deploymentName = config.deploymentName || config.model
+    const deploymentName = config.model ? config.model : config.deploymentName
     console.log(`[AzureOpenAIProvider] Using deployment: ${deploymentName}`)
 
     // Initialize Azure OpenAI client according to documentation
@@ -220,7 +220,7 @@ export class AzureOpenAIProvider implements AIProvider {
       `
 
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-4.1', // Required by OpenAI SDK but ignored by Azure
+        model: this.config.model, // Required by OpenAI SDK but ignored by Azure
         temperature: this.config.temperature || 0,
         messages: [
           {

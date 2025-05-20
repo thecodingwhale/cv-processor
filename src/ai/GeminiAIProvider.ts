@@ -38,6 +38,7 @@ export class GeminiAIProvider implements AIProvider {
 
   constructor(config: AIModelConfig) {
     this.config = config
+
     const genAI = new GoogleGenerativeAI(config.apiKey)
     this.generativeModel = genAI.getGenerativeModel({
       model: config.model || 'gemini-1.5-pro',
