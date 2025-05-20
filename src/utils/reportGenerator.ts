@@ -3,6 +3,12 @@ import { glob } from 'glob'
 import * as path from 'path'
 import { CVData } from '../types'
 
+interface ExecutionData {
+  provider: string
+  model: string
+  cvData: CVData
+}
+
 /**
  * ReportGenerator class is responsible for generating markdown reports
  * from CV processing results, including token usage metrics.
@@ -89,15 +95,15 @@ export class ReportGenerator {
 
       // Check if we have consensus
       const hasConsensus = successfulExecutions.some(
-        (data) => data.cvData.metadata.accuracy?.consensusSource
+        (data) => data.cvData.metadata?.accuracy?.consensusSource !== undefined
       )
 
       // Get consensus strength if available
       let consensusStrength = 0
       const consensusData = successfulExecutions.find(
-        (data) => data.cvData.metadata.accuracy?.consensusSource
+        (data) => data.cvData.metadata?.accuracy?.consensusSource !== undefined
       )
-      if (consensusData && consensusData.cvData.metadata.accuracy) {
+      if (consensusData?.cvData.metadata?.accuracy?.consensusSource) {
         const metadata = consensusData.cvData.metadata.accuracy.consensusSource
         // Check if metadata is an object with consensusStrength property
         if (
@@ -129,15 +135,14 @@ export class ReportGenerator {
       report += `|----------|-------|----------|----------|-------------|-----------|-------------|\n`
 
       for (const execution of successfulExecutions) {
-        const accuracy = execution.cvData.metadata.accuracy?.overall || 0
+        const accuracy = execution.cvData.metadata?.accuracy?.overall ?? 0
 
         // Token usage information
-        const tokenUsage = execution.cvData.metadata.tokenUsage
-        const tokenCount = tokenUsage ? tokenUsage.totalTokens : 'N/A'
-        const estCost =
-          tokenUsage && tokenUsage.estimatedCost
-            ? `$${tokenUsage.estimatedCost.toFixed(4)}`
-            : 'N/A'
+        const tokenUsage = execution.cvData.metadata?.tokenUsage
+        const tokenCount = tokenUsage?.totalTokens ?? 'N/A'
+        const estCost = tokenUsage?.estimatedCost
+          ? `$${tokenUsage.estimatedCost.toFixed(4)}`
+          : 'N/A'
 
         report += `| ${execution.provider} | ${
           execution.model
@@ -180,61 +185,125 @@ export class ReportGenerator {
       }) - ${slowest.time.toFixed(2)}s\n`
       report += `- **Average Time**: ${avgTime.toFixed(2)}s\n\n`
 
-      // Token Usage Comparison
-      report += `## Token Usage Comparison\n\n`
-      report += `| Provider | Model | Input Tokens | Output Tokens | Total Tokens | Est. Cost |\n`
-      report += `|----------|-------|--------------|---------------|--------------|----------|\n`
+      // Group by consensus source
+      const byConsensusSource = successfulExecutions.reduce((acc, data) => {
+        const source =
+          data.cvData.metadata?.accuracy?.consensusSource || 'Unknown'
+        if (!acc[source]) {
+          acc[source] = []
+        }
+        acc[source].push(data)
+        return acc
+      }, {} as Record<string, ExecutionData[]>)
 
-      for (const execution of successfulExecutions) {
-        const tokenUsage = execution.cvData.metadata.tokenUsage
-        const inputTokens = tokenUsage ? tokenUsage.inputTokens : 'N/A'
-        const outputTokens = tokenUsage ? tokenUsage.outputTokens : 'N/A'
-        const totalTokens = tokenUsage ? tokenUsage.totalTokens : 'N/A'
-        const estCost =
-          tokenUsage && tokenUsage.estimatedCost
-            ? `$${tokenUsage.estimatedCost.toFixed(4)}`
-            : 'N/A'
+      // Add consensus-based accuracy if available
+      const consensusExecution = successfulExecutions.find(
+        (data) => data.cvData.metadata?.accuracy?.consensusSource
+      )
 
-        report += `| ${execution.provider} | ${execution.model} | ${inputTokens} | ${outputTokens} | ${totalTokens} | ${estCost} |\n`
-      }
-      report += '\n'
-
-      // Consensus information section (if available)
-      if (hasConsensus) {
-        report += `\n## Consensus Information\n\n`
-        report += `This CV was evaluated against a consensus baseline created from ${successfulExecutions.length} AI providers.\n\n`
-        report += `Consensus strength: ${consensusStrength.toFixed(1)}%\n\n`
+      if (consensusExecution?.cvData.metadata?.accuracy?.consensusSource) {
+        const metadata =
+          consensusExecution.cvData.metadata.accuracy.consensusSource
+        report += `\n### Consensus-based Accuracy\n`
+        report += `Source: ${metadata}\n\n`
       }
 
-      // Accuracy comparison section
-      report += `## Accuracy Comparison\n\n`
-      report += `| Provider | Model | Overall | Field Accuracy | Completeness | Structure |\n`
-      report += `|----------|-------|---------|----------------|--------------|----------|\n`
+      // Add accuracy comparison
+      report += `### Accuracy Comparison\n\n`
+      report += `| Provider | Model | Accuracy | Token Usage | Cost |\n`
+      report += `|----------|-------|----------|-------------|------|\n`
 
-      for (const execution of successfulExecutions.sort(
-        (a, b) =>
-          (b.cvData.metadata.accuracy?.overall || 0) -
-          (a.cvData.metadata.accuracy?.overall || 0)
-      )) {
-        const accuracy = execution.cvData.metadata.accuracy
-        const overall = accuracy?.overall || 0
-        const fieldAccuracy = accuracy?.fieldAccuracy || 0
-        const completeness = accuracy?.completeness || 0
-        const structure = accuracy?.structuralFidelity || 0
+      successfulExecutions.forEach((execution) => {
+        const accuracy = execution.cvData.metadata?.accuracy?.overall ?? 0
+        const tokenUsage = execution.cvData.metadata?.tokenUsage
+        const cost = tokenUsage?.estimatedCost
+          ? `$${tokenUsage.estimatedCost.toFixed(4)}`
+          : 'N/A'
 
-        report += `| ${execution.provider} | ${execution.model} | ${overall}% | ${fieldAccuracy}% | ${completeness}% | ${structure}% |\n`
+        report += `| ${execution.provider} | ${
+          execution.model
+        } | ${accuracy}% | ${tokenUsage?.totalTokens ?? 'N/A'} | ${cost} |\n`
+      })
+
+      // Add token usage comparison
+      report += `\n### Token Usage Comparison\n\n`
+      report += `| Provider | Model | Input Tokens | Output Tokens | Total Tokens | Cost |\n`
+      report += `|----------|-------|--------------|---------------|--------------|------|\n`
+
+      successfulExecutions.forEach((execution) => {
+        const tokenUsage = execution.cvData.metadata?.tokenUsage
+        const cost = tokenUsage?.estimatedCost
+          ? `$${tokenUsage.estimatedCost.toFixed(4)}`
+          : 'N/A'
+
+        report += `| ${execution.provider} | ${execution.model} | ${
+          tokenUsage?.inputTokens ?? 'N/A'
+        } | ${tokenUsage?.outputTokens ?? 'N/A'} | ${
+          tokenUsage?.totalTokens ?? 'N/A'
+        } | ${cost} |\n`
+      })
+
+      // Sort by accuracy
+      const sortedByAccuracy = [...successfulExecutions].sort((a, b) => {
+        const accuracyA = a.cvData.metadata?.accuracy?.overall ?? 0
+        const accuracyB = b.cvData.metadata?.accuracy?.overall ?? 0
+        return accuracyB - accuracyA
+      })
+
+      // Add accuracy details
+      report += `\n### Accuracy Details\n\n`
+      sortedByAccuracy.forEach((execution) => {
+        const accuracy = execution.cvData.metadata?.accuracy
+        if (!accuracy) return
+
+        report += `#### ${execution.provider} (${execution.model})\n`
+        report += `- Overall Accuracy: ${accuracy.overall}%\n`
+        if (accuracy.fieldAccuracy) {
+          report += `- Field Accuracy: ${accuracy.fieldAccuracy}%\n`
+        }
+        report += `- Completeness: ${accuracy.completeness}%\n`
+        if (accuracy.structuralFidelity) {
+          report += `- Structural Fidelity: ${accuracy.structuralFidelity}%\n`
+        }
+        if (accuracy.missingFields?.length) {
+          report += `- Missing Fields: ${accuracy.missingFields.join(', ')}\n`
+        }
+        report += '\n'
+      })
+
+      // Sort by token usage
+      const sortedByTokens = [...successfulExecutions].sort((a, b) => {
+        const accuracyA = a.cvData.metadata?.accuracy?.overall ?? 0
+        const accuracyB = b.cvData.metadata?.accuracy?.overall ?? 0
+        return accuracyB - accuracyA
+      })
+
+      // Add token usage details
+      report += `\n### Token Usage Details\n\n`
+      sortedByTokens.forEach((execution) => {
+        const tokenUsage = execution.cvData.metadata?.tokenUsage
+        if (!tokenUsage) return
+
+        report += `#### ${execution.provider} (${execution.model})\n`
+        report += `- Input Tokens: ${tokenUsage.inputTokens}\n`
+        report += `- Output Tokens: ${tokenUsage.outputTokens}\n`
+        report += `- Total Tokens: ${tokenUsage.totalTokens}\n`
+        if (tokenUsage.estimatedCost) {
+          report += `- Estimated Cost: $${tokenUsage.estimatedCost.toFixed(
+            4
+          )}\n`
+        }
+        report += '\n'
+      })
+
+      // Add best accuracy summary
+      const bestAccuracy = sortedByAccuracy[0]
+      if (bestAccuracy?.cvData.metadata?.accuracy) {
+        report += `\n### Best Accuracy\n`
+        report += `Provider: ${bestAccuracy.provider}\n`
+        report += `Model: ${bestAccuracy.model}\n`
+        report += `Accuracy: ${bestAccuracy.cvData.metadata.accuracy.overall}%\n\n`
       }
-
-      // Find best overall
-      const bestAccuracy = [...successfulExecutions].sort(
-        (a, b) =>
-          (b.cvData.metadata.accuracy?.overall || 0) -
-          (a.cvData.metadata.accuracy?.overall || 0)
-      )[0]
-
-      report += `\n**Best Overall Accuracy**: ${bestAccuracy.provider} (${
-        bestAccuracy.model
-      }) - ${bestAccuracy.cvData.metadata.accuracy?.overall || 0}%\n\n`
 
       return report
     } catch (error) {
