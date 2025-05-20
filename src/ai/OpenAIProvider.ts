@@ -149,6 +149,83 @@ export class OpenAIProvider implements AIProvider {
     }
   }
 
+  async extractStructuredDataFromText<T>(
+    texts: string[],
+    dataSchema: object,
+    instructions: string
+  ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
+    try {
+      const prompt = `
+        ${instructions}
+        Extract information from the following text according to this JSON schema:
+        ${JSON.stringify(dataSchema, null, 2)}
+        Your response should be valid JSON that matches this schema.
+
+        Text content:
+        ${texts.join('\n\n')}
+      `
+
+      const completion = await this.openai.chat.completions.create({
+        model: this.config.model || 'gpt-4o',
+        temperature: this.config.temperature || 0,
+        max_tokens: this.config.maxTokens || 4096,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: prompt,
+          },
+        ],
+      })
+
+      const responseText = completion.choices[0]?.message?.content || '{}'
+
+      // Extract token usage information
+      const promptTokens = completion.usage?.prompt_tokens || 0
+      const completionTokens = completion.usage?.completion_tokens || 0
+      const totalTokens = completion.usage?.total_tokens || 0
+
+      // Calculate estimated cost
+      const model = this.config.model || 'gpt-4o'
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        model
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
+      try {
+        let fixedJson
+        try {
+          fixedJson = jsonrepair(responseText)
+        } catch (err) {
+          console.error('❌ Could not repair JSON:', err)
+          throw new Error(`AI returned invalid JSON: ${err}`)
+        }
+
+        const parsedJson = JSON.parse(fixedJson)
+
+        return {
+          ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
+        }
+      } catch (jsonError) {
+        console.error('Error parsing JSON from OpenAI response:', jsonError)
+        throw jsonError
+      }
+    } catch (error) {
+      console.error('Error extracting structured data with OpenAI:', error)
+      throw error
+    }
+  }
+
   getModelInfo(): { provider: string; model: string } {
     return {
       provider: 'openai',

@@ -201,6 +201,93 @@ export class AzureOpenAIProvider implements AIProvider {
     }
   }
 
+  async extractStructuredDataFromText<T>(
+    texts: string[],
+    dataSchema: object,
+    instructions: string
+  ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
+    try {
+      const prompt = `
+        ${instructions}
+        
+        Extract information from the following text according to this JSON schema:
+        ${JSON.stringify(dataSchema, null, 2)}
+        
+        Your response should be valid JSON that matches this schema.
+
+        Text content:
+        ${texts.join('\n\n')}
+      `
+
+      const completion = await this.client.chat.completions.create({
+        model: 'gpt-4.1', // Required by OpenAI SDK but ignored by Azure
+        temperature: this.config.temperature || 0,
+        messages: [
+          {
+            role: 'system',
+            content: prompt,
+          },
+        ],
+      })
+
+      const responseText = completion.choices[0]?.message?.content || '{}'
+
+      // Extract token usage information
+      const promptTokens =
+        completion.usage?.prompt_tokens || this.estimateTokenCount(prompt)
+      const completionTokens =
+        completion.usage?.completion_tokens ||
+        this.estimateTokenCount(responseText)
+      const totalTokens =
+        completion.usage?.total_tokens || promptTokens + completionTokens
+
+      // Calculate estimated cost
+      const model = this.config.deploymentName || this.config.model || 'gpt-4.1'
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        model
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
+      try {
+        let fixedJson
+        try {
+          fixedJson = jsonrepair(responseText)
+        } catch (err) {
+          console.error('❌ Could not repair JSON:', err)
+          throw new Error(`AI returned invalid JSON: ${err}`)
+        }
+
+        const parsedJson = JSON.parse(fixedJson)
+
+        return {
+          ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
+        }
+      } catch (jsonError) {
+        console.error(
+          'Error parsing JSON from Azure OpenAI response:',
+          jsonError
+        )
+        throw jsonError
+      }
+    } catch (error) {
+      console.error(
+        'Error extracting structured data with Azure OpenAI:',
+        error
+      )
+      throw error
+    }
+  }
+
   getModelInfo(): { provider: string; model: string } {
     return {
       provider: 'azure',

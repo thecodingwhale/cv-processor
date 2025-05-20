@@ -1,18 +1,31 @@
+import { ConversionType } from './AIProvider'
+
 export interface CVData {
-  metadata: {
+  credits: Array<{
+    projectTitle: string
+    type: string
+    role: string
+    productionCompany: string
+    director: string
+    year: string
+    location: string
+    link?: string
+  }>
+  metadata?: {
     processedDate: string
     sourceFile: string
     model?: string
     provider?: string
     error?: string // Add optional error property
     processingTime?: number // Time in seconds it took to process
+    conversionType?: ConversionType
     accuracy?: {
       overall: number
       categoryAssignment?: number
       fieldAccuracy?: number
       completeness: number
       structuralValidity?: number
-      structuralFidelity?: number
+      structuralFidelity: number
       missingFields: string[]
       consensusSource?: string
     }
@@ -22,6 +35,12 @@ export interface CVData {
       totalTokens: number
       estimatedCost?: number
     }
+  }
+  tokenUsage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    estimatedCost?: number
   }
 }
 

@@ -5,6 +5,11 @@ export interface AIModelConfig {
   maxTokens?: number
 }
 
+export enum ConversionType {
+  PdfToImages = 'PdfToImages',
+  PdfToTexts = 'PdfToTexts',
+}
+
 /**
  * Token usage information returned by AI providers
  */
@@ -23,10 +28,19 @@ export interface AIResponseFormat {
 
 export interface AIProvider {
   /**
-   * Extract structured data from text using the AI model
+   * Extract structured data from images using the AI model
    */
   extractStructuredDataFromImages<T>(
     imageUrls: string[],
+    dataSchema: object,
+    instructions: string
+  ): Promise<T & { tokenUsage?: TokenUsageInfo }>
+
+  /**
+   * Extract structured data from text using the AI model
+   */
+  extractStructuredDataFromText<T>(
+    texts: string[],
     dataSchema: object,
     instructions: string
   ): Promise<T & { tokenUsage?: TokenUsageInfo }>

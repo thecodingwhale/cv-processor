@@ -144,6 +144,75 @@ export class GeminiAIProvider implements AIProvider {
     }
   }
 
+  async extractStructuredDataFromText<T>(
+    texts: string[],
+    dataSchema: object,
+    instructions: string
+  ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
+    try {
+      const prompt = `
+        ${instructions}
+        
+        Extract information from the following text according to this JSON schema:
+        ${JSON.stringify(dataSchema, null, 2)}
+        
+        Your response should be valid JSON that matches this schema.
+
+        Text content:
+        ${texts.join('\n\n')}
+      `
+
+      const result = await this.generativeModel.generateContent(prompt)
+      const response = await result.response
+      const responseText = response.text()
+
+      // Gemini API doesn't provide easy access to token counts like OpenAI
+      // Use estimation instead
+      const promptTokens = this.estimateTokenCount(prompt)
+      const completionTokens = this.estimateTokenCount(responseText)
+      const totalTokens = promptTokens + completionTokens
+
+      // Calculate estimated cost
+      const model = this.config.model || 'gemini-1.5-pro'
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        model
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
+      try {
+        let fixedJson
+        try {
+          fixedJson = jsonrepair(responseText)
+        } catch (err) {
+          console.error('❌ Could not repair JSON:', err)
+          throw new Error(`AI returned invalid JSON: ${err}`)
+        }
+
+        const parsedJson = JSON.parse(fixedJson)
+
+        return {
+          ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
+        }
+      } catch (jsonError) {
+        console.error('Error parsing JSON from Gemini response:', jsonError)
+        throw jsonError
+      }
+    } catch (error) {
+      console.error('Error extracting structured data with Gemini AI:', error)
+      throw error
+    }
+  }
+
   getModelInfo(): { provider: string; model: string } {
     return {
       provider: 'gemini',

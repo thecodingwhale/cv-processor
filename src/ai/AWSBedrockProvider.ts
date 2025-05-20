@@ -299,6 +299,119 @@ export class AWSBedrockProvider implements AIProvider {
     }
   }
 
+  async extractStructuredDataFromText<T>(
+    texts: string[],
+    dataSchema: object,
+    instructions: string
+  ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
+    try {
+      console.log(`[AWSBedrockProvider] Processing ${texts.length} text pages`)
+      console.log(`[AWSBedrockProvider] Extracting structured data from text`)
+
+      const modelId = this.config.model || 'apac.amazon.nova-micro-v1:0'
+
+      const prompt = `
+        ${instructions}
+        
+        Extract information from the following text according to this JSON schema:
+        ${JSON.stringify(dataSchema, null, 2)}
+        
+        Your response should be valid JSON that matches this schema.
+        IMPORTANT: Return ONLY the JSON object, with no additional text or markdown formatting.
+
+        Text content:
+        ${texts.join('\n\n')}
+      `
+
+      // Create the command using the Converse API format
+      const command = new ConverseCommand({
+        modelId: modelId,
+        messages: [
+          {
+            role: 'user',
+            content: [{ text: prompt }],
+          },
+        ],
+        inferenceConfig: {
+          maxTokens: this.config.maxTokens || 4096,
+          temperature: this.config.temperature || 0,
+          topP: 1,
+        },
+      })
+
+      console.log(`[AWSBedrockProvider] Sending request to model ${modelId}`)
+      const response = await this.client.send(command)
+
+      // Extract text from the response
+      let responseText = ''
+      if (
+        response.output &&
+        response.output.message &&
+        response.output.message.content
+      ) {
+        for (const content of response.output.message.content) {
+          if (content.text) {
+            responseText += content.text
+          }
+        }
+      } else {
+        console.warn(
+          '[AWSBedrockProvider] Unexpected response structure:',
+          response
+        )
+        responseText = JSON.stringify(response)
+      }
+
+      // AWS Bedrock doesn't always provide token usage in a standard way
+      // Use estimation for token usage
+      const promptTokens = this.estimateTokenCount(prompt)
+      const completionTokens = this.estimateTokenCount(responseText)
+      const totalTokens = promptTokens + completionTokens
+
+      // Calculate estimated cost
+      const estimatedCost = this.calculateCost(
+        promptTokens,
+        completionTokens,
+        modelId
+      )
+
+      // Create token usage object
+      const tokenUsage: TokenUsageInfo = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCost,
+      }
+
+      try {
+        let fixedJson
+        try {
+          fixedJson = jsonrepair(responseText)
+        } catch (err) {
+          console.error('❌ Could not repair JSON:', err)
+          throw new Error(`AI returned invalid JSON: ${err}`)
+        }
+
+        const parsedJson = JSON.parse(fixedJson)
+
+        return {
+          ...replaceUUIDv4Placeholders(parsedJson),
+          tokenUsage,
+        }
+      } catch (jsonError) {
+        console.error(
+          '[AWSBedrockProvider] Error parsing JSON response:',
+          jsonError
+        )
+        console.error('[AWSBedrockProvider] Raw response:', responseText)
+        throw new Error('Failed to parse AI response as JSON')
+      }
+    } catch (error) {
+      console.error('Error extracting structured data with AWS Bedrock:', error)
+      throw error
+    }
+  }
+
   getModelInfo(): { provider: string; model: string } {
     return {
       provider: 'aws',
