@@ -55,6 +55,10 @@ program
     'Type of PDF conversion to use (pdftoimages, pdftotexts)',
     'pdftoimages'
   )
+  .option(
+    '--instructions-path <path>',
+    'Path to the instructions file (defaults to instructions.txt in project root)'
+  )
   .action(async (pdfFile, options) => {
     try {
       // Validate input file
@@ -168,6 +172,9 @@ program
       )
       const processor = new AICVProcessor(aiProvider, {
         verbose: options.verbose,
+        instructionsPath:
+          options.instructionsPath ||
+          path.join(process.cwd(), 'instructions.txt'),
       })
 
       // Process the CV with the specified conversion type
