@@ -14,6 +14,8 @@ interface ProviderMetrics {
   count: number
   successRate: number
   files: string[]
+  conversionTypes?: string[]
+  instructionPaths?: string[]
 }
 
 interface Report {
@@ -30,6 +32,8 @@ interface Report {
     structure?: number
     emptinessPercentage?: number
     outputFile: string
+    conversionType?: string
+    instructionPath?: string
     tokenUsage?: {
       totalTokens: number
       inputTokens: number
@@ -177,37 +181,51 @@ export async function mergeReports(outputDir: string): Promise<string> {
     // Process all executions with their times and output files
     const executions: Record<
       string,
-      { processingTime: number; outputFile: string }
+      {
+        processingTime: number
+        outputFile: string
+        conversionType?: string
+        instructionPath?: string
+      }
     > = {}
 
     for (const row of executionRows) {
       const columns = row.split('|').map((col) => col.trim())
-      if (columns.length < 6) continue
+      if (columns.length < 7) continue
 
       const provider = columns[1]
       const model = columns[2]
-      const timeStr = columns[3]
-      const outputFileLink = columns[columns.length - 2] // Account for potential additional columns
+
+      // Extract instructions path and conversion type if available
+      // Format: | Provider | Model | Instructions Path | Conversion Type | Time (s) | Accuracy | Output File |
+      let instructionPath = 'default'
+      let conversionType = 'unknown'
+
+      // Check if we have the new format with instruction path and conversion type
+      if (columns.length >= 9) {
+        instructionPath = columns[3]
+        conversionType = columns[4]
+      }
+
+      // Get the time column index based on the table format
+      const timeIndex = columns.length >= 9 ? 5 : 3
+      const timeStr = columns[timeIndex]
+
+      // Get the output file link column
+      const outputFileLinkIndex = columns.length >= 9 ? 7 : 5
+      const outputFileLink = columns[outputFileLinkIndex]
 
       // Try to extract token usage directly from the table if available
       let totalTokens: number | undefined = undefined
       let estimatedCost: number | undefined = undefined
 
       // If we have token usage column (depends on table format)
-      if (columns.length >= 7) {
-        const tokenUsageStr = columns[4]
-        if (tokenUsageStr !== 'N/A') {
+      if (columns.length >= 9) {
+        // In the new format, token usage would be in column 6
+        const tokenUsageStr = columns[6]
+        if (tokenUsageStr !== 'N/A' && !tokenUsageStr.includes('%')) {
           totalTokens = parseInt(tokenUsageStr)
           if (isNaN(totalTokens)) totalTokens = undefined
-        }
-
-        // If we have estimated cost column
-        if (columns.length >= 8) {
-          const costStr = columns[5].replace('$', '')
-          if (costStr !== 'N/A') {
-            estimatedCost = parseFloat(costStr)
-            if (isNaN(estimatedCost)) estimatedCost = undefined
-          }
         }
       }
 
@@ -225,6 +243,8 @@ export async function mergeReports(outputDir: string): Promise<string> {
       executions[key] = {
         processingTime: time,
         outputFile,
+        conversionType,
+        instructionPath,
       }
     }
 
@@ -337,6 +357,8 @@ export async function mergeReports(outputDir: string): Promise<string> {
         structure,
         emptinessPercentage: emptiness ? emptiness.percentage : undefined,
         outputFile: path.join(dirName, execution.outputFile),
+        conversionType: execution.conversionType,
+        instructionPath: execution.instructionPath,
         tokenUsage: tokenUsage
           ? {
               totalTokens: tokenUsage.totalTokens || 0,
@@ -351,6 +373,61 @@ export async function mergeReports(outputDir: string): Promise<string> {
               estimatedCost: 0,
             },
       })
+
+      // Store conversion types and instruction paths in provider and model records
+      if (execution.conversionType) {
+        if (!report.providers[providerKey].conversionTypes) {
+          report.providers[providerKey].conversionTypes = []
+        }
+        if (
+          !report.providers[providerKey].conversionTypes.includes(
+            execution.conversionType
+          )
+        ) {
+          report.providers[providerKey].conversionTypes.push(
+            execution.conversionType
+          )
+        }
+
+        if (!report.models[modelKey].conversionTypes) {
+          report.models[modelKey].conversionTypes = []
+        }
+        if (
+          !report.models[modelKey].conversionTypes.includes(
+            execution.conversionType
+          )
+        ) {
+          report.models[modelKey].conversionTypes.push(execution.conversionType)
+        }
+      }
+
+      if (execution.instructionPath) {
+        if (!report.providers[providerKey].instructionPaths) {
+          report.providers[providerKey].instructionPaths = []
+        }
+        if (
+          !report.providers[providerKey].instructionPaths.includes(
+            execution.instructionPath
+          )
+        ) {
+          report.providers[providerKey].instructionPaths.push(
+            execution.instructionPath
+          )
+        }
+
+        if (!report.models[modelKey].instructionPaths) {
+          report.models[modelKey].instructionPaths = []
+        }
+        if (
+          !report.models[modelKey].instructionPaths.includes(
+            execution.instructionPath
+          )
+        ) {
+          report.models[modelKey].instructionPaths.push(
+            execution.instructionPath
+          )
+        }
+      }
     }
 
     // Extract success rate from the summary
@@ -504,64 +581,109 @@ function generateMarkdownReport(report: Report): string {
   }\n`
   markdown += `**Total Runs Analyzed**: ${report.allRuns.length}\n\n`
 
+  // Provider Accuracy Visualization with Mermaid
+  markdown += `## Provider Accuracy Visualization\n\n`
+  markdown += '```mermaid\n'
+  markdown += 'pie title Provider Accuracy (%)\n'
+  for (const provider of sortedProviders.slice(0, 6)) {
+    // Limit to top 6 for readability
+    markdown += `    "${provider.provider}" : ${Math.round(
+      provider.accuracy * 100
+    )}\n`
+  }
+  markdown += '```\n\n'
+
   markdown += `## Best Providers by Accuracy\n\n`
-  markdown += `| Provider | Avg Accuracy | Avg Field Accuracy | Avg Completeness | Avg Structure | Avg Emptiness | Runs |\n`
-  markdown += `|----------|-------------|-------------------|-----------------|--------------|--------------|------|\n`
+  markdown += `| Provider | Avg Accuracy | Avg Field Accuracy | Avg Emptiness | Conversion Types | Instructions | Runs |\n`
+  markdown += `|----------|-------------|-------------------|--------------|----------------|-------------|------|\n`
   for (const provider of sortedProviders) {
     markdown += `| ${provider.provider} | ${(provider.accuracy * 100).toFixed(
       1
     )}% | ${
       provider.fieldAccuracy ? (provider.fieldAccuracy * 100).toFixed(1) : '-'
     }% | ${
-      provider.completeness ? (provider.completeness * 100).toFixed(1) : '-'
-    }% | ${
-      provider.structure ? (provider.structure * 100).toFixed(1) : '-'
-    }% | ${
       provider.emptinessPercentage
         ? (provider.emptinessPercentage * 100).toFixed(1)
         : '-'
-    }% | ${provider.count} |\n`
+    }% | ${formatConversionTypes(
+      provider.conversionTypes
+    )} | ${formatInstructionPaths(provider.instructionPaths)} | ${
+      provider.count
+    } |\n`
   }
 
+  // Top Models Bar Chart - Fix visualization
+  markdown += `\n## Top Models Accuracy Comparison\n\n`
+  markdown += '```mermaid\n'
+  markdown += 'pie title Top 6 Models by Accuracy (%)\n'
+  for (const model of sortedModels.slice(0, 6)) {
+    // Limit to top 6 models
+    markdown += `    "${model.provider} (${model.model})" : ${Math.round(
+      model.accuracy * 100
+    )}\n`
+  }
+  markdown += '```\n\n'
+
   markdown += `\n## Best Models by Accuracy\n\n`
-  markdown += `| Provider | Model | Avg Accuracy | Avg Field Accuracy | Avg Completeness | Avg Structure | Avg Emptiness | Runs |\n`
-  markdown += `|----------|-------|-------------|-------------------|-----------------|--------------|--------------|------|\n`
+  markdown += `| Provider | Model | Avg Accuracy | Avg Field Accuracy | Avg Emptiness | Conversion Types | Instructions | Runs |\n`
+  markdown += `|----------|-------|-------------|-------------------|--------------|----------------|-------------|------|\n`
   for (const model of sortedModels) {
     markdown += `| ${model.provider} | ${model.model} | ${(
       model.accuracy * 100
     ).toFixed(1)}% | ${
       model.fieldAccuracy ? (model.fieldAccuracy * 100).toFixed(1) : '-'
     }% | ${
-      model.completeness ? (model.completeness * 100).toFixed(1) : '-'
-    }% | ${model.structure ? (model.structure * 100).toFixed(1) : '-'}% | ${
       model.emptinessPercentage
         ? (model.emptinessPercentage * 100).toFixed(1)
         : '-'
-    }% | ${model.count} |\n`
+    }% | ${formatConversionTypes(
+      model.conversionTypes
+    )} | ${formatInstructionPaths(model.instructionPaths)} | ${model.count} |\n`
   }
 
+  // Processing Time Chart - Fix visualization
+  markdown += `\n## Processing Time Visualization\n\n`
+  markdown += '```mermaid\n'
+  markdown += 'gantt\n'
+  markdown += '    title Processing Time by Model (seconds)\n'
+  markdown += '    dateFormat X\n'
+  markdown += '    axisFormat %S s\n\n'
+  // Add bar chart elements for processing time (for top 6 fastest models)
+  for (const model of fastestModels.slice(0, 6)) {
+    // Use a cleaner label format
+    const label = `${model.provider} (${
+      model.model.length > 10
+        ? model.model.substring(0, 10) + '...'
+        : model.model
+    })`
+    const safeName = label.replace(/[^a-zA-Z0-9]/g, '_')
+    markdown += `    ${safeName} :a, 0, ${model.processingTime.toFixed(2)}s\n`
+  }
+  markdown += '```\n\n'
+
   markdown += `\n## Fastest Providers\n\n`
-  markdown += `| Provider | Avg Processing Time (s) | Runs |\n`
-  markdown += `|----------|--------------------------|------|\n`
+  markdown += `| Provider | Avg Processing Time (s) | Conversion Types | Instructions | Runs |\n`
+  markdown += `|----------|--------------------------|----------------|-------------|------|\n`
   for (const provider of fastestProviders) {
     markdown += `| ${provider.provider} | ${provider.processingTime.toFixed(
       2
-    )} | ${provider.count} |\n`
+    )} | ${formatConversionTypes(
+      provider.conversionTypes
+    )} | ${formatInstructionPaths(provider.instructionPaths)} | ${
+      provider.count
+    } |\n`
   }
 
   markdown += `\n## Fastest Models\n\n`
-  markdown += `| Provider | Model | Avg Processing Time (s) | Runs |\n`
-  markdown += `|----------|-------|--------------------------|------|\n`
+  markdown += `| Provider | Model | Avg Processing Time (s) | Conversion Types | Instructions | Runs |\n`
+  markdown += `|----------|-------|--------------------------|----------------|-------------|------|\n`
   for (const model of fastestModels) {
     markdown += `| ${model.provider} | ${
       model.model
-    } | ${model.processingTime.toFixed(2)} | ${model.count} |\n`
+    } | ${model.processingTime.toFixed(2)} | ${formatConversionTypes(
+      model.conversionTypes
+    )} | ${formatInstructionPaths(model.instructionPaths)} | ${model.count} |\n`
   }
-
-  // Add token usage comparison by model
-  markdown += `\n## Token Usage Comparison by Model\n\n`
-  markdown += `| Provider | Model | Avg Total Tokens | Avg Input Tokens | Avg Output Tokens | Avg Est. Cost |\n`
-  markdown += `|----------|-------|-----------------|-----------------|------------------|-------------|\n`
 
   // Calculate token usage for each model
   const modelTokenUsage = new Map<
@@ -615,36 +737,139 @@ function generateMarkdownReport(report: Report): string {
     })
     .sort((a, b) => b.avgTotalTokens - a.avgTotalTokens)
 
+  // Token Usage Pie Chart - Fix visualization
+  if (sortedModelsByTokens.length > 0) {
+    markdown += `\n## Token Usage Visualization\n\n`
+    markdown += '```mermaid\n'
+    markdown += 'pie title Average Token Usage by Provider\n'
+    // Group token usage by provider and limit to top 5 providers for readability
+    const providerTokens: Record<string, number> = {}
+    for (const usage of sortedModelsByTokens) {
+      const provider = usage.provider
+      if (!providerTokens[provider]) {
+        providerTokens[provider] = 0
+      }
+      providerTokens[provider] += usage.avgTotalTokens
+    }
+
+    // Sort providers by token usage and take top 5
+    const topProviders = Object.entries(providerTokens)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+
+    // Add pie chart segments for top 5 providers
+    for (const [provider, tokens] of topProviders) {
+      markdown += `    "${provider}" : ${Math.round(tokens)}\n`
+    }
+    markdown += '```\n\n'
+  }
+
+  markdown += `\n## Token Usage Comparison by Model\n\n`
+  markdown += `| Provider | Model | Avg Total Tokens | Avg Input Tokens | Avg Output Tokens | Avg Est. Cost | Conversion Types | Instructions |\n`
+  markdown += `|----------|-------|-----------------|-----------------|------------------|-------------|-----------------|--------------|\n`
+
   for (const model of sortedModelsByTokens) {
+    const modelKey = `${model.provider}_${model.model}`
+    const modelObj = report.models[modelKey]
+
     markdown += `| ${model.provider} | ${
       model.model
     } | ${model.avgTotalTokens.toFixed(0)} | ${model.avgInputTokens.toFixed(
       0
     )} | ${model.avgOutputTokens.toFixed(
       0
-    )} | $${model.avgEstimatedCost.toFixed(4)} |\n`
+    )} | $${model.avgEstimatedCost.toFixed(4)} | ${
+      modelObj ? formatConversionTypes(modelObj.conversionTypes) : 'unknown'
+    } | ${
+      modelObj
+        ? formatInstructionPaths(modelObj.instructionPaths)
+        : './instructions.txt'
+    } |\n`
   }
 
+  // Accuracy vs Speed Visualization - Fix visualization
+  markdown += `\n## Accuracy vs Speed Visualization\n\n`
+  markdown += '```mermaid\n'
+  markdown += 'graph TD\n'
+  markdown += '    title["Accuracy vs. Processing Time"];\n'
+  markdown += '    style title fill:#fff,stroke:#fff,stroke-width:0px;\n\n'
+
+  // Create nodes for top models
+  for (let i = 0; i < Math.min(8, Object.values(report.models).length); i++) {
+    const model = sortedModels[i] // Use top models by accuracy
+
+    // Calculate node position based on processing time and accuracy
+    const accuracy = Math.round(model.accuracy * 100)
+    const time = model.processingTime.toFixed(1)
+
+    // Create node with formatted label
+    markdown += `    m${i}["${model.provider}<br/>${accuracy}% accuracy<br/>${time}s"];\n`
+    markdown += `    class m${i} model${i};\n`
+  }
+
+  // Add styling for nodes - each with a different color
+  markdown += '    classDef model0 fill:#4CAF50,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model1 fill:#2196F3,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model2 fill:#FFC107,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model3 fill:#F44336,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model4 fill:#9C27B0,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model5 fill:#00BCD4,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model6 fill:#FF9800,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model7 fill:#607D8B,stroke:#333,stroke-width:1px;\n'
+  markdown += '```\n\n'
+
   markdown += `\n## Best Overall (Combined Accuracy & Speed)\n\n`
-  markdown += `| Provider | Model | Accuracy | Processing Time (s) | Combined Score |\n`
-  markdown += `|----------|-------|----------|---------------------|---------------|\n`
+  markdown += `| Provider | Model | Accuracy | Processing Time (s) | Combined Score | Conversion Types | Instructions |\n`
+  markdown += `|----------|-------|----------|---------------------|---------------|----------------|-------------|\n`
   for (const model of bestOverallModels.slice(0, 5)) {
     markdown += `| ${model.provider} | ${model.model} | ${(
       model.accuracy * 100
     ).toFixed(1)}% | ${model.processingTime.toFixed(2)} | ${combinedScore(
       model
-    ).toFixed(2)} |\n`
+    ).toFixed(2)} | ${formatConversionTypes(
+      model.conversionTypes
+    )} | ${formatInstructionPaths(model.instructionPaths)} |\n`
   }
 
+  // Top Models Performance Comparison - Fix visualization
+  markdown += `\n## Top Models Performance Comparison\n\n`
+  markdown += '```mermaid\n'
+  markdown += 'graph TD\n'
+  markdown += '    title["Top Model Performance"];\n'
+  markdown += '    style title fill:#fff,stroke:#fff,stroke-width:0px;\n\n'
+
+  // Create a cleaner visualization with the top 3 models
+  for (let i = 0; i < Math.min(3, bestOverallModels.length); i++) {
+    const model = bestOverallModels[i]
+    const convType =
+      model.conversionTypes && model.conversionTypes.length > 0
+        ? formatConversionType(model.conversionTypes[0])
+        : 'unknown'
+
+    markdown += `    m${i}["#${i + 1}: ${model.provider} (${model.model})<br/>`
+    markdown += `🎯 Accuracy: ${(model.accuracy * 100).toFixed(1)}%<br/>`
+    markdown += `⏱️ Speed: ${model.processingTime.toFixed(2)}s<br/>`
+    markdown += `🔄 Conversion: ${convType}<br/>`
+    markdown += `📊 Score: ${combinedScore(model).toFixed(2)}"];\n`
+    markdown += `    class m${i} model${i};\n`
+  }
+
+  markdown += '    classDef model0 fill:#4CAF50,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model1 fill:#2196F3,stroke:#333,stroke-width:1px;\n'
+  markdown += '    classDef model2 fill:#FFC107,stroke:#333,stroke-width:1px;\n'
+  markdown += '```\n\n'
+
   markdown += `\n## Best Models by Field Emptiness\n\n`
-  markdown += `| Provider | Model | Avg Emptiness | Runs |\n`
-  markdown += `|----------|-------|--------------|------|\n`
+  markdown += `| Provider | Model | Avg Emptiness | Conversion Types | Instructions | Runs |\n`
+  markdown += `|----------|-------|--------------|----------------|-------------|------|\n`
   for (const model of bestEmptinessModels) {
     markdown += `| ${model.provider} | ${model.model} | ${
       model.emptinessPercentage
         ? (model.emptinessPercentage * 100).toFixed(1)
         : '-'
-    }% | ${model.count} |\n`
+    }% | ${formatConversionTypes(
+      model.conversionTypes
+    )} | ${formatInstructionPaths(model.instructionPaths)} | ${model.count} |\n`
   }
 
   markdown += `\n## Recommendations\n\n`
@@ -711,8 +936,8 @@ function generateMarkdownReport(report: Report): string {
   }
 
   markdown += `## All Runs\n\n`
-  markdown += `| CV | Provider | Model | Accuracy | Emptiness | Processing Time (s) | Total Tokens | Est. Cost |\n`
-  markdown += `|----|----------|-------|----------|-----------|---------------------|--------------|----------|\n`
+  markdown += `| CV | Provider | Model | Accuracy | Field Accuracy | Emptiness | Processing Time (s) | Conversion Type | Instructions | Total Tokens | Est. Cost |\n`
+  markdown += `|----|----------|-------|----------|---------------|-----------|---------------------|----------------|-------------|--------------|----------|\n`
   for (const run of report.allRuns) {
     const totalTokens = run.tokenUsage ? run.tokenUsage.totalTokens : 'N/A'
     const estCost =
@@ -723,13 +948,73 @@ function generateMarkdownReport(report: Report): string {
       run.emptinessPercentage !== undefined
         ? `${(run.emptinessPercentage * 100).toFixed(1)}%`
         : 'N/A'
+    const fieldAccuracyValue =
+      run.fieldAccuracy !== undefined
+        ? `${(run.fieldAccuracy * 100).toFixed(1)}%`
+        : 'N/A'
 
     markdown += `| ${run.cvName} | ${run.provider} | ${run.model} | ${(
       run.accuracy * 100
-    ).toFixed(1)}% | ${emptinessValue} | ${run.processingTime.toFixed(
+    ).toFixed(
+      1
+    )}% | ${fieldAccuracyValue} | ${emptinessValue} | ${run.processingTime.toFixed(
       2
+    )} | ${formatConversionType(run.conversionType)} | ${formatInstructionPath(
+      run.instructionPath
     )} | ${totalTokens} | ${estCost} |\n`
   }
 
   return markdown
+}
+
+// Format conversion type
+function formatConversionType(type?: string): string {
+  if (!type) return 'unknown'
+
+  // Handle percentage values by converting them to the appropriate type
+  if (type.endsWith('%')) {
+    const percentValue = parseInt(type)
+    // Based on convention in the system:
+    // 30% typically means pdftotexts
+    // 24% typically means pdftoimages
+    if (percentValue === 30) return 'pdftotexts'
+    if (percentValue === 24 || percentValue === 18 || percentValue === 0)
+      return 'pdftoimages'
+    if (percentValue === 100) return 'pdftotexts'
+    return type // Return the original if no mapping
+  }
+
+  // Convert PdfToTexts -> pdftotexts and PdfToImages -> pdftoimages
+  if (type.toLowerCase().includes('text')) return 'pdftotexts'
+  if (type.toLowerCase().includes('image')) return 'pdftoimages'
+  return type.toLowerCase()
+}
+
+// Format instruction path
+function formatInstructionPath(path?: string): string {
+  if (!path) return './instructions.txt'
+
+  // Handle numeric instruction paths and convert them to the appropriate filename
+  if (!isNaN(parseFloat(path))) {
+    // Map numeric values to instruction files
+    // (Add more mappings as needed)
+    if (parseFloat(path) > 10) return './instructions_version_1.txt'
+    return './instructions.txt'
+  }
+
+  // Extract the filename only, keeping the ./ prefix
+  const filename = path.split('/').pop() || 'instructions.txt'
+  return `./${filename}`
+}
+
+// Format arrays of conversion types
+function formatConversionTypes(types?: string[]): string {
+  if (!types || types.length === 0) return 'unknown'
+  return types.map((t) => formatConversionType(t)).join(', ')
+}
+
+// Format arrays of instruction paths
+function formatInstructionPaths(paths?: string[]): string {
+  if (!paths || paths.length === 0) return './instructions.txt'
+  return paths.map((p) => formatInstructionPath(p)).join(', ')
 }

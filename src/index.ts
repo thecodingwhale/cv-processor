@@ -15,10 +15,10 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { AICVProcessor } from './AICVProcessor'
 import { AIProviderFactory, AIProviderType } from './ai/AIProviderFactory'
+import registerMergeReportsCommand from './cli/mergeReports'
 import { CVData } from './types'
 import { AIProvider, ConversionType } from './types/AIProvider'
 import { getAIConfig } from './utils/aiConfig'
-import { mergeReports } from './utils/reportMerger'
 
 // Load environment variables
 dotenv.config()
@@ -116,41 +116,8 @@ program
     }
   })
 
-program
-  .command('merge-reports')
-  .description('Merge and analyze reports from multiple CV processing runs')
-  .option(
-    '-d, --dir <directory>',
-    'Directory containing CV processing output',
-    'output'
-  )
-  .option(
-    '-o, --output <file>',
-    'Output file for the merged report',
-    'merged-report.md'
-  )
-  .action(async (options) => {
-    try {
-      console.log(`Merging reports from ${options.dir}...`)
-
-      // Check if the output directory exists
-      if (!fs.existsSync(options.dir)) {
-        console.error(`Error: Output directory not found: ${options.dir}`)
-        process.exit(1)
-      }
-
-      // Run the report merger
-      const result = await mergeReports(options.dir)
-
-      // Save the report
-      fs.writeFileSync(options.output, result)
-
-      console.log(`Merged report saved to ${options.output}`)
-    } catch (error) {
-      console.error(`Error merging reports: ${error}`)
-      process.exit(1)
-    }
-  })
+// Register the merge-reports command using the function from cli/mergeReports.ts
+registerMergeReportsCommand(program)
 
 // For backward compatibility, make 'process' the default command
 program.parse(process.argv)

@@ -13,7 +13,11 @@
     "parallel": "node scripts/run-parallel.js",
     "baseMetrics": "node scripts/generate-base-metrics.js",
     "updateBaseMetrics": "node scripts/generate-base-metrics.js --update",
-    "merge-reports": "node dist/index.js merge-reports"
+    "merge-reports": "node dist/index.js merge-reports",
+    "merge-reports-charts": "node dist/index.js merge-reports --charts",
+    "merge-reports-html": "node dist/index.js merge-reports --html",
+    "render-charts": "ts-node src/scripts/render-charts.ts",
+    "render-html-report": "ts-node src/scripts/render-charts.ts --html"
   },
   "keywords": [
     "CV",
@@ -37,6 +41,7 @@
     "tesseract.js": "^5.0.0"
   },
   "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^10.9.1",
     "@types/glob": "^8.1.0",
     "@types/node": "^20.10.0",
     "@types/pdf-parse": "^1.1.1",
