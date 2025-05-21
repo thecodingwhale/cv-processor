@@ -10,6 +10,7 @@ interface ProviderMetrics {
   fieldAccuracy?: number
   completeness?: number
   structure?: number
+  emptinessPercentage?: number
   count: number
   successRate: number
   files: string[]
@@ -27,6 +28,7 @@ interface Report {
     fieldAccuracy?: number
     completeness?: number
     structure?: number
+    emptinessPercentage?: number
     outputFile: string
     tokenUsage?: {
       totalTokens: number
@@ -78,6 +80,11 @@ export async function mergeReports(outputDir: string): Promise<string> {
       /## Token Usage Comparison\n\n\|.*\|.*\|\n\|.*\|.*\|\n((?:\|.*\|\n)*)/
     )
 
+    // Extract the field emptiness comparison table if available
+    const emptinessTableMatch = content.match(
+      /## Field Emptiness Comparison\n\n\|.*\|.*\|\n\|.*\|.*\|\n((?:\|.*\|\n)*)/
+    )
+
     // Map to store token usage by provider and model
     const tokenUsageByModel: Record<
       string,
@@ -86,6 +93,16 @@ export async function mergeReports(outputDir: string): Promise<string> {
         outputTokens: number
         totalTokens: number
         estimatedCost?: number
+      }
+    > = {}
+
+    // Map to store emptiness percentage by provider and model
+    const emptinessByModel: Record<
+      string,
+      {
+        percentage: number
+        nonEmptyFields: number
+        totalFields: number
       }
     > = {}
 
@@ -120,6 +137,39 @@ export async function mergeReports(outputDir: string): Promise<string> {
           outputTokens,
           totalTokens,
           estimatedCost,
+        }
+      }
+    }
+
+    // Process emptiness percentage data if available
+    if (emptinessTableMatch) {
+      const emptinessRows = emptinessTableMatch[1].trim().split('\n')
+
+      for (const row of emptinessRows) {
+        const columns = row.split('|').map((col) => col.trim())
+        if (columns.length < 6) continue
+
+        const provider = columns[1]
+        const model = columns[2]
+        const nonEmptyFields = columns[3] !== 'N/A' ? parseInt(columns[3]) : 0
+        const totalFields = columns[4] !== 'N/A' ? parseInt(columns[4]) : 0
+
+        // Parse emptiness percentage (remove % and convert to decimal)
+        let percentage = 0
+        if (columns[5] !== 'N/A') {
+          const percentStr = columns[5].replace('%', '')
+          percentage = parseInt(percentStr) / 100
+          if (isNaN(percentage)) percentage = 0
+        }
+
+        // Create a key to match with execution data
+        const key = `${provider}_${model}`
+
+        // Store emptiness percentage data
+        emptinessByModel[key] = {
+          percentage,
+          nonEmptyFields,
+          totalFields,
         }
       }
     }
@@ -209,6 +259,9 @@ export async function mergeReports(outputDir: string): Promise<string> {
       // Get token usage data if available
       const tokenUsage = tokenUsageByModel[key]
 
+      // Get emptiness percentage data if available
+      const emptiness = emptinessByModel[key]
+
       // Update provider metrics
       const providerKey = provider
       if (!report.providers[providerKey]) {
@@ -220,6 +273,7 @@ export async function mergeReports(outputDir: string): Promise<string> {
           fieldAccuracy: 0,
           completeness: 0,
           structure: 0,
+          emptinessPercentage: 0,
           count: 0,
           successRate: 0,
           files: [],
@@ -233,6 +287,9 @@ export async function mergeReports(outputDir: string): Promise<string> {
       if (completeness)
         report.providers[providerKey].completeness! += completeness
       if (structure) report.providers[providerKey].structure! += structure
+      if (emptiness)
+        report.providers[providerKey].emptinessPercentage! +=
+          emptiness.percentage
       report.providers[providerKey].count += 1
       report.providers[providerKey].files.push(
         path.join(dirName, execution.outputFile)
@@ -249,6 +306,7 @@ export async function mergeReports(outputDir: string): Promise<string> {
           fieldAccuracy: 0,
           completeness: 0,
           structure: 0,
+          emptinessPercentage: 0,
           count: 0,
           successRate: 0,
           files: [],
@@ -260,6 +318,8 @@ export async function mergeReports(outputDir: string): Promise<string> {
       if (fieldAccuracy) report.models[modelKey].fieldAccuracy! += fieldAccuracy
       if (completeness) report.models[modelKey].completeness! += completeness
       if (structure) report.models[modelKey].structure! += structure
+      if (emptiness)
+        report.models[modelKey].emptinessPercentage! += emptiness.percentage
       report.models[modelKey].count += 1
       report.models[modelKey].files.push(
         path.join(dirName, execution.outputFile)
@@ -275,6 +335,7 @@ export async function mergeReports(outputDir: string): Promise<string> {
         fieldAccuracy,
         completeness,
         structure,
+        emptinessPercentage: emptiness ? emptiness.percentage : undefined,
         outputFile: path.join(dirName, execution.outputFile),
         tokenUsage: tokenUsage
           ? {
@@ -323,6 +384,9 @@ export async function mergeReports(outputDir: string): Promise<string> {
         provider.completeness = provider.completeness / provider.count
       if (provider.structure)
         provider.structure = provider.structure / provider.count
+      if (provider.emptinessPercentage)
+        provider.emptinessPercentage =
+          provider.emptinessPercentage / provider.count
     }
   }
 
@@ -335,6 +399,8 @@ export async function mergeReports(outputDir: string): Promise<string> {
       if (model.completeness)
         model.completeness = model.completeness / model.count
       if (model.structure) model.structure = model.structure / model.count
+      if (model.emptinessPercentage)
+        model.emptinessPercentage = model.emptinessPercentage / model.count
     }
   }
 
@@ -343,10 +409,10 @@ export async function mergeReports(outputDir: string): Promise<string> {
 }
 
 /**
- * Load token usage data from JSON files
+ * Load additional data from JSON files
  */
 async function loadTokenUsageData(report: Report): Promise<Report> {
-  // Process each run to extract token usage from JSON files
+  // Process each run to extract data from JSON files
   for (const run of report.allRuns) {
     try {
       // Read the output file to get token usage information
@@ -362,10 +428,16 @@ async function loadTokenUsageData(report: Report): Promise<Report> {
             estimatedCost: data.metadata.tokenUsage.estimatedCost || 0,
           }
         }
+
+        // Check if emptiness percentage information is available in metadata
+        if (data.metadata && data.metadata.emptinessPercentage) {
+          run.emptinessPercentage =
+            data.metadata.emptinessPercentage.percentage / 100
+        }
       }
     } catch (error) {
       console.error(
-        `Error loading token usage data from ${run.outputFile}:`,
+        `Error loading additional data from ${run.outputFile}:`,
         error
       )
     }
@@ -388,6 +460,19 @@ function generateMarkdownReport(report: Report): string {
     (a, b) => a.processingTime - b.processingTime
   )
 
+  // Sort by emptiness percentage (higher is better)
+  const bestEmptinessProviders = [...Object.values(report.providers)]
+    .filter(
+      (p) => p.emptinessPercentage !== undefined && p.emptinessPercentage > 0
+    )
+    .sort((a, b) => (b.emptinessPercentage || 0) - (a.emptinessPercentage || 0))
+
+  const bestEmptinessModels = [...Object.values(report.models)]
+    .filter(
+      (m) => m.emptinessPercentage !== undefined && m.emptinessPercentage > 0
+    )
+    .sort((a, b) => (b.emptinessPercentage || 0) - (a.emptinessPercentage || 0))
+
   // Calculate a combined score (weighted average of accuracy and speed)
   // Higher is better
   const combinedScore = (metrics: ProviderMetrics) => {
@@ -398,8 +483,11 @@ function generateMarkdownReport(report: Report): string {
     const normalizedTime =
       maxTime > 0 ? 1 - metrics.processingTime / maxTime : 0
 
-    // Weight accuracy more heavily than speed
-    return metrics.accuracy * 0.7 + normalizedTime * 0.3
+    // Include emptiness percentage in the score if available
+    const emptinessScore = metrics.emptinessPercentage || 0
+
+    // Weight accuracy more heavily than speed, also consider emptiness percentage
+    return metrics.accuracy * 0.6 + normalizedTime * 0.2 + emptinessScore * 0.2
   }
 
   const bestOverallProviders = [...Object.values(report.providers)].sort(
@@ -417,8 +505,8 @@ function generateMarkdownReport(report: Report): string {
   markdown += `**Total Runs Analyzed**: ${report.allRuns.length}\n\n`
 
   markdown += `## Best Providers by Accuracy\n\n`
-  markdown += `| Provider | Avg Accuracy | Avg Field Accuracy | Avg Completeness | Avg Structure | Runs |\n`
-  markdown += `|----------|-------------|-------------------|-----------------|--------------|------|\n`
+  markdown += `| Provider | Avg Accuracy | Avg Field Accuracy | Avg Completeness | Avg Structure | Avg Emptiness | Runs |\n`
+  markdown += `|----------|-------------|-------------------|-----------------|--------------|--------------|------|\n`
   for (const provider of sortedProviders) {
     markdown += `| ${provider.provider} | ${(provider.accuracy * 100).toFixed(
       1
@@ -428,12 +516,16 @@ function generateMarkdownReport(report: Report): string {
       provider.completeness ? (provider.completeness * 100).toFixed(1) : '-'
     }% | ${
       provider.structure ? (provider.structure * 100).toFixed(1) : '-'
+    }% | ${
+      provider.emptinessPercentage
+        ? (provider.emptinessPercentage * 100).toFixed(1)
+        : '-'
     }% | ${provider.count} |\n`
   }
 
   markdown += `\n## Best Models by Accuracy\n\n`
-  markdown += `| Provider | Model | Avg Accuracy | Avg Field Accuracy | Avg Completeness | Avg Structure | Runs |\n`
-  markdown += `|----------|-------|-------------|-------------------|-----------------|--------------|------|\n`
+  markdown += `| Provider | Model | Avg Accuracy | Avg Field Accuracy | Avg Completeness | Avg Structure | Avg Emptiness | Runs |\n`
+  markdown += `|----------|-------|-------------|-------------------|-----------------|--------------|--------------|------|\n`
   for (const model of sortedModels) {
     markdown += `| ${model.provider} | ${model.model} | ${(
       model.accuracy * 100
@@ -442,8 +534,10 @@ function generateMarkdownReport(report: Report): string {
     }% | ${
       model.completeness ? (model.completeness * 100).toFixed(1) : '-'
     }% | ${model.structure ? (model.structure * 100).toFixed(1) : '-'}% | ${
-      model.count
-    } |\n`
+      model.emptinessPercentage
+        ? (model.emptinessPercentage * 100).toFixed(1)
+        : '-'
+    }% | ${model.count} |\n`
   }
 
   markdown += `\n## Fastest Providers\n\n`
@@ -542,6 +636,17 @@ function generateMarkdownReport(report: Report): string {
     ).toFixed(2)} |\n`
   }
 
+  markdown += `\n## Best Models by Field Emptiness\n\n`
+  markdown += `| Provider | Model | Avg Emptiness | Runs |\n`
+  markdown += `|----------|-------|--------------|------|\n`
+  for (const model of bestEmptinessModels) {
+    markdown += `| ${model.provider} | ${model.model} | ${
+      model.emptinessPercentage
+        ? (model.emptinessPercentage * 100).toFixed(1)
+        : '-'
+    }% | ${model.count} |\n`
+  }
+
   markdown += `\n## Recommendations\n\n`
 
   // Best overall model
@@ -569,6 +674,19 @@ function generateMarkdownReport(report: Report): string {
     2
   )}s average processing time.\n\n`
 
+  // Best for emptiness percentage
+  if (bestEmptinessModels.length > 0) {
+    const bestEmptinessModel = bestEmptinessModels[0]
+    markdown += `### Best for Field Emptiness\n`
+    markdown += `**${bestEmptinessModel.provider} (${
+      bestEmptinessModel.model
+    })** with ${
+      bestEmptinessModel.emptinessPercentage
+        ? (bestEmptinessModel.emptinessPercentage * 100).toFixed(1)
+        : '-'
+    }% field emptiness percentage.\n\n`
+  }
+
   // Most cost-effective model
   if (sortedModelsByTokens.length > 0) {
     const modelsByEfficiency = [...sortedModelsByTokens]
@@ -593,18 +711,22 @@ function generateMarkdownReport(report: Report): string {
   }
 
   markdown += `## All Runs\n\n`
-  markdown += `| CV | Provider | Model | Accuracy | Processing Time (s) | Total Tokens | Est. Cost |\n`
-  markdown += `|----|----------|-------|----------|---------------------|--------------|----------|\n`
+  markdown += `| CV | Provider | Model | Accuracy | Emptiness | Processing Time (s) | Total Tokens | Est. Cost |\n`
+  markdown += `|----|----------|-------|----------|-----------|---------------------|--------------|----------|\n`
   for (const run of report.allRuns) {
     const totalTokens = run.tokenUsage ? run.tokenUsage.totalTokens : 'N/A'
     const estCost =
       run.tokenUsage && run.tokenUsage.estimatedCost
         ? `$${run.tokenUsage.estimatedCost.toFixed(4)}`
         : 'N/A'
+    const emptinessValue =
+      run.emptinessPercentage !== undefined
+        ? `${(run.emptinessPercentage * 100).toFixed(1)}%`
+        : 'N/A'
 
     markdown += `| ${run.cvName} | ${run.provider} | ${run.model} | ${(
       run.accuracy * 100
-    ).toFixed(1)}% | ${run.processingTime.toFixed(
+    ).toFixed(1)}% | ${emptinessValue} | ${run.processingTime.toFixed(
       2
     )} | ${totalTokens} | ${estCost} |\n`
   }

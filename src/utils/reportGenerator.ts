@@ -243,6 +243,21 @@ export class ReportGenerator {
         } | ${cost} |\n`
       })
 
+      // Add emptiness percentage comparison
+      report += `\n### Field Emptiness Comparison\n\n`
+      report += `| Provider | Model | Populated Fields | Total Fields | Emptiness % |\n`
+      report += `|----------|-------|-----------------|--------------|------------|\n`
+
+      successfulExecutions.forEach((execution) => {
+        const emptinessPercentage =
+          execution.cvData.metadata?.emptinessPercentage
+        const percentage = emptinessPercentage?.percentage ?? 'N/A'
+        const nonEmptyFields = emptinessPercentage?.nonEmptyFields ?? 'N/A'
+        const totalFields = emptinessPercentage?.totalFields ?? 'N/A'
+
+        report += `| ${execution.provider} | ${execution.model} | ${nonEmptyFields} | ${totalFields} | ${percentage}% |\n`
+      })
+
       // Sort by accuracy
       const sortedByAccuracy = [...successfulExecutions].sort((a, b) => {
         const accuracyA = a.cvData.metadata?.accuracy?.overall ?? 0
@@ -254,6 +269,8 @@ export class ReportGenerator {
       report += `\n### Accuracy Details\n\n`
       sortedByAccuracy.forEach((execution) => {
         const accuracy = execution.cvData.metadata?.accuracy
+        const emptinessPercentage =
+          execution.cvData.metadata?.emptinessPercentage
         if (!accuracy) return
 
         report += `#### ${execution.provider} (${execution.model})\n`
@@ -264,6 +281,10 @@ export class ReportGenerator {
         report += `- Completeness: ${accuracy.completeness}%\n`
         if (accuracy.structuralFidelity) {
           report += `- Structural Fidelity: ${accuracy.structuralFidelity}%\n`
+        }
+        // Add emptiness percentage information if available
+        if (emptinessPercentage) {
+          report += `- Field Emptiness: ${emptinessPercentage.percentage}% (${emptinessPercentage.nonEmptyFields}/${emptinessPercentage.totalFields} fields populated)\n`
         }
         if (accuracy.missingFields?.length) {
           report += `- Missing Fields: ${accuracy.missingFields.join(', ')}\n`
