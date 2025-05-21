@@ -9,14 +9,157 @@ const {
 
 // Configuration of providers and models to run
 const CONFIGURATIONS = [
-  { provider: 'gemini', model: undefined },
-  { provider: 'gemini', model: 'gemini-1.5-flash-8b' },
-  { provider: 'gemini', model: 'gemini-1.5-pro' },
-  { provider: 'openai', model: undefined },
-  { provider: 'openai', model: 'gpt-4-turbo' },
-  { provider: 'grok', model: undefined },
-  { provider: 'azure', model: 'gpt-4.1' },
-  { provider: 'aws', model: undefined },
+  // -- ./instructions.txt with pdftotexts --
+  {
+    provider: 'aws',
+    model: 'apac.amazon.nova-micro-v1:0',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-3.5-turbo',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'openai',
+    model: 'o3-mini',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-flash',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-flash-8b',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'azure',
+    model: 'o3-mini',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-3',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+
+  // -- ./instructions_version_1.txt with pdftotexts --
+  {
+    provider: 'aws',
+    model: 'apac.amazon.nova-micro-v1:0',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-3.5-turbo',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'openai',
+    model: 'o3-mini',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-flash',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-flash-8b',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'azure',
+    model: 'o3-mini',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-3',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftotexts',
+  },
+
+  // -- ./instructions.txt with pdftoimages --
+  {
+    provider: 'aws',
+    model: 'apac.amazon.nova-lite-v1:0',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-4o',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-2.0-flash-lite',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-2-vision-1212',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+
+  // -- ./instructions_version_1.txt with pdftoimages --
+  {
+    provider: 'aws',
+    model: 'apac.amazon.nova-lite-v1:0',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-4o',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-2.0-flash-lite',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-2-vision-1212',
+    instructionsPath: './instructions_version_1.txt',
+    conversionType: 'pdftoimages',
+  },
 ]
 
 // Get the CV path from command line arguments
@@ -52,16 +195,20 @@ if (!fs.existsSync(outputDir)) {
  */
 function runProcess(cvPath, config, outputDir) {
   return new Promise((resolve, reject) => {
-    const { provider, model } = config
+    const { provider, model, instructionsPath, conversionType } = config
 
     // Create a unique output file name for this configuration
     const outputFile = path.join(
       outputDir,
-      `${provider}${model ? `_${model.replace(/[^\w-]/g, '-')}` : ''}.json`
+      `${provider}${
+        model ? `_${model.replace(/[^\w-]/g, '-')}` : ''
+      }_${instructionsPath.replace(/[^\w-]/g, '-')}_${conversionType}.json`
     )
 
     console.log(
-      `Starting process for ${provider}${model ? ` (${model})` : ''}...`
+      `Starting process for ${provider}${
+        model ? ` (${model})` : ''
+      } with ${instructionsPath} and ${conversionType}...`
     )
 
     // Build the command arguments
@@ -74,7 +221,17 @@ function runProcess(cvPath, config, outputDir) {
       provider,
       '-o',
       outputFile,
+      '--instructions-path',
+      instructionsPath,
     ]
+
+    // Add conversion type
+    if (conversionType === 'pdftotexts') {
+      args.push('--conversion-type', 'pdftotexts')
+    } else if (conversionType === 'pdftoimages') {
+      args.push('--conversion-type', 'pdftoimages')
+    }
+
     if (model) {
       args.push('--ai-model', model)
     }
@@ -154,6 +311,8 @@ function runProcess(cvPath, config, outputDir) {
         resolve({
           provider,
           model,
+          instructionsPath,
+          conversionType,
           status: 'success',
           processingTime,
           outputFile: actualOutputFile,
@@ -164,6 +323,8 @@ function runProcess(cvPath, config, outputDir) {
         reject({
           provider,
           model,
+          instructionsPath,
+          conversionType,
           status: 'failed',
           exitCode: code,
           error: stderr || 'Unknown error',
@@ -178,6 +339,8 @@ function runProcess(cvPath, config, outputDir) {
       reject({
         provider,
         model,
+        instructionsPath,
+        conversionType,
         status: 'failed',
         error: err.message,
         stdout,
@@ -263,15 +426,61 @@ function generateMarkdownReport(
   md += `- **Successful**: ${successResults.length}\n`
   md += `- **Failed**: ${failedResults.length}\n`
   md += `- **Success Rate**: ${successRate}%\n`
+
   if (hasConsensusBaseline) {
     md += `- **Consensus Baseline**: Yes\n`
   }
+
+  // Find results with emptiness percentage data early in the report generation
+  const resultsWithEmptinessPercentage = successResults.filter((result) => {
+    if (!fs.existsSync(result.outputFile)) return false
+    try {
+      const data = JSON.parse(fs.readFileSync(result.outputFile, 'utf8'))
+      return (
+        data.metadata &&
+        data.metadata.emptinessPercentage &&
+        typeof data.metadata.emptinessPercentage.percentage === 'number'
+      )
+    } catch (e) {
+      return false
+    }
+  })
+
+  // Add best emptiness percentage to summary if available
+  if (resultsWithEmptinessPercentage.length > 0) {
+    const bestEmptinessForSummary = resultsWithEmptinessPercentage.reduce(
+      (best, current) => {
+        const data = JSON.parse(fs.readFileSync(current.outputFile, 'utf8'))
+        const emptiness = data.metadata.emptinessPercentage
+        if (!best.score || emptiness.percentage > best.score) {
+          return {
+            provider: current.provider,
+            model: current.model || 'default',
+            instructionsPath: current.instructionsPath,
+            conversionType: current.conversionType,
+            score: emptiness.percentage,
+          }
+        }
+        return best
+      },
+      {
+        provider: '',
+        model: '',
+        instructionsPath: '',
+        conversionType: '',
+        score: 0,
+      }
+    )
+
+    md += `- **Best Field Emptiness**: ${bestEmptinessForSummary.score}% (${bestEmptinessForSummary.provider} ${bestEmptinessForSummary.model})\n`
+  }
+
   md += `\n`
 
   if (successResults.length > 0) {
     md += `## Successful Executions\n\n`
-    md += `| Provider | Model | Time (s) | Accuracy | Output File |\n`
-    md += `|----------|-------|----------|----------|-------------|\n`
+    md += `| Provider | Model | Instructions Path | Conversion Type | Time (s) | Accuracy | Output File |\n`
+    md += `|----------|-------|-----------------|---------------|----------|----------|-------------|\n`
 
     successResults.forEach((result) => {
       let accuracyScore = 'N/A'
@@ -294,6 +503,8 @@ function generateMarkdownReport(
 
       const fileName = path.basename(result.outputFile)
       md += `| ${result.provider} | ${result.model || 'default'} | ${
+        result.instructionsPath
+      } | ${result.conversionType} | ${
         result.processingTime ? result.processingTime.toFixed(2) : 'N/A'
       } | ${accuracyScore} | [View](./${fileName}) |\n`
     })
@@ -302,16 +513,14 @@ function generateMarkdownReport(
 
   if (failedResults.length > 0) {
     md += `## Failed Executions\n\n`
-    md += `| Provider | Model | Error |\n`
-    md += `|----------|-------|-------|\n`
+    md += `| Provider | Model | Instructions Path | Conversion Type | Error |\n`
+    md += `|----------|-------|-----------------|---------------|-------|\n`
 
     failedResults.forEach((result) => {
       const errorMsg = result.error || 'Unknown error'
-      const truncatedError =
-        errorMsg.length > 50 ? errorMsg.substring(0, 50) + '...' : errorMsg
-      md += `| ${result.provider} | ${
-        result.model || 'default'
-      } | ${truncatedError} |\n`
+      md += `| ${result.provider} | ${result.model || 'default'} | ${
+        result.instructionsPath
+      } | ${result.conversionType} | ${errorMsg} |\n`
     })
     md += `\n`
   }
@@ -365,12 +574,12 @@ function generateMarkdownReport(
 
     if (hasConsensusResults) {
       // Table for consensus-based accuracy
-      md += `| Provider | Model | Overall | Field Accuracy | Completeness | Structure |\n`
-      md += `|----------|-------|---------|----------------|--------------|----------|\n`
+      md += `| Provider | Model | Instructions Path | Conversion Type | Overall | Field Accuracy | Completeness | Structure |\n`
+      md += `|----------|-------|-----------------|---------------|---------|----------------|--------------|----------|\n`
     } else {
       // Table for standard accuracy
-      md += `| Provider | Model | Overall | Categories | Completeness | Structure |\n`
-      md += `|----------|-------|---------|------------|--------------|----------|\n`
+      md += `| Provider | Model | Instructions Path | Conversion Type | Overall | Categories | Completeness | Structure |\n`
+      md += `|----------|-------|-----------------|---------------|---------|------------|--------------|----------|\n`
     }
 
     // Sort by overall accuracy (highest first)
@@ -387,17 +596,17 @@ function generateMarkdownReport(
       if (accuracy.consensusSource) {
         // Consensus-based accuracy metrics
         md += `| ${result.provider} | ${result.model || 'default'} | ${
-          accuracy.overall
-        }% | ${accuracy.fieldAccuracy}% | ${accuracy.completeness}% | ${
-          accuracy.structuralFidelity
-        }% |\n`
+          result.instructionsPath
+        } | ${result.conversionType} | ${accuracy.overall}% | ${
+          accuracy.fieldAccuracy
+        }% | ${accuracy.completeness}% | ${accuracy.structuralFidelity}% |\n`
       } else {
         // Standard accuracy metrics
         md += `| ${result.provider} | ${result.model || 'default'} | ${
-          accuracy.overall
-        }% | ${accuracy.categoryAssignment}% | ${accuracy.completeness}% | ${
-          accuracy.structuralValidity
-        }% |\n`
+          result.instructionsPath
+        } | ${result.conversionType} | ${accuracy.overall}% | ${
+          accuracy.categoryAssignment
+        }% | ${accuracy.completeness}% | ${accuracy.structuralValidity}% |\n`
       }
     })
 
@@ -417,6 +626,49 @@ function generateMarkdownReport(
     )
 
     md += `\n**Best Overall Accuracy**: ${bestOverall.provider} (${bestOverall.model}) - ${bestOverall.score}%\n`
+  }
+
+  // Add emptiness percentage comparison if available
+  if (
+    resultsWithEmptinessPercentage &&
+    resultsWithEmptinessPercentage.length > 0
+  ) {
+    md += `\n## Field Emptiness Comparison\n\n`
+    md += `| Provider | Model | Instructions Path | Conversion Type | Populated Fields | Total Fields | Emptiness % |\n`
+    md += `|----------|-------|-----------------|---------------|-----------------|--------------|------------|\n`
+
+    // Sort by emptiness percentage (highest first)
+    const sortedEmptinessResults = [...resultsWithEmptinessPercentage].sort(
+      (a, b) => {
+        const dataA = JSON.parse(fs.readFileSync(a.outputFile, 'utf8'))
+        const dataB = JSON.parse(fs.readFileSync(b.outputFile, 'utf8'))
+        return (
+          dataB.metadata.emptinessPercentage.percentage -
+          dataA.metadata.emptinessPercentage.percentage
+        )
+      }
+    )
+
+    sortedEmptinessResults.forEach((result) => {
+      const data = JSON.parse(fs.readFileSync(result.outputFile, 'utf8'))
+      const emptiness = data.metadata.emptinessPercentage
+
+      md += `| ${result.provider} | ${result.model || 'default'} | ${
+        result.instructionsPath
+      } | ${result.conversionType} | ${emptiness.nonEmptyFields} | ${
+        emptiness.totalFields
+      } | ${emptiness.percentage}% |\n`
+    })
+
+    // Find the best performer in field completeness
+    const bestEmptinessForDetail = sortedEmptinessResults[0]
+    const bestEmptinessData = JSON.parse(
+      fs.readFileSync(bestEmptinessForDetail.outputFile, 'utf8')
+    )
+    const bestEmptinessScore =
+      bestEmptinessData.metadata.emptinessPercentage.percentage
+
+    md += `\n**Best Field Emptiness**: ${bestEmptinessForDetail.provider} (${bestEmptinessForDetail.model}) - ${bestEmptinessScore}%\n`
   }
 
   return md
