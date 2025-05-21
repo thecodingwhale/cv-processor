@@ -29,6 +29,11 @@ export interface CVData {
       missingFields: string[]
       consensusSource?: string
     }
+    emptinessPercentage?: {
+      percentage: number
+      totalFields: number
+      nonEmptyFields: number
+    }
     tokenUsage?: {
       inputTokens: number
       outputTokens: number

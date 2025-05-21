@@ -3,6 +3,7 @@ import * as path from 'path'
 import { CVData, ProcessorOptions } from './types'
 import { AIProvider, ConversionType } from './types/AIProvider'
 import { ConsensusAccuracyScorer } from './utils/ConsensusAccuracyScorer'
+import { EmptinessPercentageCalculator } from './utils/EmptinessPercentageCalculator'
 import { convertPdfToImages, convertPdfToTexts } from './utils/document'
 import { ReportGenerator } from './utils/reportGenerator'
 
@@ -219,6 +220,25 @@ export class AICVProcessor {
         structuralFidelity: consensusResult.structuralFidelity,
         missingFields: consensusResult.missingFields,
         consensusSource: consensusResult.metadata.consensusSource,
+      }
+
+      // Calculate emptiness percentage
+      const emptinessResult =
+        EmptinessPercentageCalculator.calculateEmptinessPercentage(cvData)
+      cvData.metadata.emptinessPercentage = emptinessResult
+
+      // Add standard log message for emptiness percentage score (not conditional on verbose)
+      console.log(
+        `[AICVProcessor] Emptiness Percentage score: ${emptinessResult.percentage}%`
+      )
+
+      if (this.verbose) {
+        console.log(
+          `[AICVProcessor] Emptiness percentage: ${emptinessResult.percentage}%`
+        )
+        console.log(
+          `[AICVProcessor] Total fields: ${emptinessResult.totalFields}, Non-empty fields: ${emptinessResult.nonEmptyFields}`
+        )
       }
 
       return cvData
