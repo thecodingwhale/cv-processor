@@ -39,14 +39,20 @@ export class GeminiAIProvider implements AIProvider {
   constructor(config: AIModelConfig) {
     this.config = config
 
+    const model = config.model || 'gemini-1.5-pro'
+
+    // Set topK to 40 if using gemini-1.5-flash-8b model which has a limitation
+    // of topK value from 1-41 (exclusive)
+    const topK = model === 'gemini-1.5-flash-8b' ? 40 : 50
+
     const genAI = new GoogleGenerativeAI(config.apiKey)
     this.generativeModel = genAI.getGenerativeModel({
-      model: config.model || 'gemini-1.5-pro',
+      model: model,
       generationConfig: {
         temperature: config.temperature || 0,
         maxOutputTokens: config.maxTokens || 8192,
         topP: 1,
-        topK: 50,
+        topK: topK,
         candidateCount: 1,
       },
     })

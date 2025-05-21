@@ -33,6 +33,9 @@ const OPENAI_PRICING: Record<string, ModelPricing> = {
   default: { input: 0.0025, output: 0.01 }, // Default fallback pricing
 }
 
+// O series models that require special parameter handling
+const O_SERIES_MODELS = ['o1', 'o1-mini', 'o3', 'o3-mini', 'o4-mini']
+
 export class OpenAIProvider implements AIProvider {
   private openai: OpenAI
   private config: AIModelConfig
@@ -73,10 +76,12 @@ export class OpenAIProvider implements AIProvider {
         Your response should be valid JSON that matches this schema.
       `
 
-      const completion = await this.openai.chat.completions.create({
-        model: this.config.model || 'gpt-4o',
-        temperature: this.config.temperature || 0,
-        max_tokens: this.config.maxTokens || 4096,
+      const model = this.config.model || 'gpt-4o'
+      const isOSeriesModel = O_SERIES_MODELS.includes(model)
+
+      // Create the request parameters based on the model
+      const requestParams: any = {
+        model: model,
         response_format: { type: 'json_object' },
         messages: [
           {
@@ -99,7 +104,19 @@ export class OpenAIProvider implements AIProvider {
             ],
           },
         ],
-      })
+      }
+
+      // Add appropriate parameters based on model series
+      if (isOSeriesModel) {
+        requestParams.max_completion_tokens = this.config.maxTokens || 4096
+      } else {
+        requestParams.temperature = this.config.temperature || 0
+        requestParams.max_tokens = this.config.maxTokens || 4096
+      }
+
+      const completion = await this.openai.chat.completions.create(
+        requestParams
+      )
 
       const responseText = completion.choices[0]?.message?.content || '{}'
 
@@ -109,7 +126,6 @@ export class OpenAIProvider implements AIProvider {
       const totalTokens = completion.usage?.total_tokens || 0
 
       // Calculate estimated cost
-      const model = this.config.model || 'gpt-4o'
       const estimatedCost = this.calculateCost(
         promptTokens,
         completionTokens,
@@ -165,10 +181,12 @@ export class OpenAIProvider implements AIProvider {
         ${texts.join('\n\n')}
       `
 
-      const completion = await this.openai.chat.completions.create({
-        model: this.config.model || 'gpt-4o',
-        temperature: this.config.temperature || 0,
-        max_tokens: this.config.maxTokens || 4096,
+      const model = this.config.model || 'gpt-4o'
+      const isOSeriesModel = O_SERIES_MODELS.includes(model)
+
+      // Create the request parameters based on the model
+      const requestParams: any = {
+        model: model,
         response_format: { type: 'json_object' },
         messages: [
           {
@@ -176,7 +194,19 @@ export class OpenAIProvider implements AIProvider {
             content: prompt,
           },
         ],
-      })
+      }
+
+      // Add appropriate parameters based on model series
+      if (isOSeriesModel) {
+        requestParams.max_completion_tokens = this.config.maxTokens || 4096
+      } else {
+        requestParams.temperature = this.config.temperature || 0
+        requestParams.max_tokens = this.config.maxTokens || 4096
+      }
+
+      const completion = await this.openai.chat.completions.create(
+        requestParams
+      )
 
       const responseText = completion.choices[0]?.message?.content || '{}'
 
@@ -186,7 +216,6 @@ export class OpenAIProvider implements AIProvider {
       const totalTokens = completion.usage?.total_tokens || 0
 
       // Calculate estimated cost
-      const model = this.config.model || 'gpt-4o'
       const estimatedCost = this.calculateCost(
         promptTokens,
         completionTokens,

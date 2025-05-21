@@ -3,6 +3,9 @@ import { AzureOpenAI } from 'openai'
 import { AIModelConfig, AIProvider, TokenUsageInfo } from '../types/AIProvider'
 import { replaceUUIDv4Placeholders } from '../utils/data'
 
+/**
+ * Extended configuration for Azure OpenAI
+ */
 export interface AzureOpenAIConfig extends AIModelConfig {
   endpoint: string
   apiVersion?: string
@@ -29,6 +32,9 @@ const AZURE_OPENAI_PRICING: Record<string, ModelPricing> = {
   // Add more models as needed
   default: { input: 0.002, output: 0.008 }, // Default fallback pricing
 }
+
+// O series models that require special parameter handling (no temperature)
+const O_SERIES_MODELS = ['o1', 'o1-mini', 'o3', 'o3-mini', 'o4-mini']
 
 export class AzureOpenAIProvider implements AIProvider {
   private client: AzureOpenAI
@@ -131,16 +137,18 @@ export class AzureOpenAIProvider implements AIProvider {
         },
       ]
 
+      const model = this.config.model || ''
+      const isOSeriesModel = O_SERIES_MODELS.some((m) => model.includes(m))
+
       // Create request parameters for vision model
-      const requestParams = {
+      const requestParams: any = {
         messages: messages,
         model: 'gpt-4.1', // Required by OpenAI SDK but ignored by Azure
-        // max_completion_tokens: this.config.maxTokens || 4096,
-        temperature: this.config.temperature || 0,
+      }
 
-        // max_tokens: this.config.maxTokens || 4096,
-        // response_format: { type: 'json_object' },
-        // response_format: { type: 'json_object' },
+      // Only add temperature for non-O series models
+      if (!isOSeriesModel) {
+        requestParams.temperature = this.config.temperature || 0
       }
 
       completion = await this.client.chat.completions.create(requestParams)
@@ -158,11 +166,12 @@ export class AzureOpenAIProvider implements AIProvider {
         completion.usage?.total_tokens || promptTokens + completionTokens
 
       // Calculate estimated cost
-      const model = this.config.deploymentName || this.config.model || 'gpt-4.1'
+      const modelName =
+        this.config.deploymentName || this.config.model || 'gpt-4.1'
       const estimatedCost = this.calculateCost(
         promptTokens,
         completionTokens,
-        model
+        modelName
       )
 
       // Create token usage object
@@ -219,16 +228,28 @@ export class AzureOpenAIProvider implements AIProvider {
         ${texts.join('\n\n')}
       `
 
-      const completion = await this.client.chat.completions.create({
+      const model = this.config.model || ''
+      const isOSeriesModel = O_SERIES_MODELS.some((m) => model.includes(m))
+
+      // Create request parameters
+      const requestParams: any = {
         model: this.config.model, // Required by OpenAI SDK but ignored by Azure
-        temperature: this.config.temperature || 0,
         messages: [
           {
             role: 'system',
             content: prompt,
           },
         ],
-      })
+      }
+
+      // Only add temperature for non-O series models
+      if (!isOSeriesModel) {
+        requestParams.temperature = this.config.temperature || 0
+      }
+
+      const completion = await this.client.chat.completions.create(
+        requestParams
+      )
 
       const responseText = completion.choices[0]?.message?.content || '{}'
 
@@ -242,11 +263,12 @@ export class AzureOpenAIProvider implements AIProvider {
         completion.usage?.total_tokens || promptTokens + completionTokens
 
       // Calculate estimated cost
-      const model = this.config.deploymentName || this.config.model || 'gpt-4.1'
+      const modelName =
+        this.config.deploymentName || this.config.model || 'gpt-4.1'
       const estimatedCost = this.calculateCost(
         promptTokens,
         completionTokens,
-        model
+        modelName
       )
 
       // Create token usage object
