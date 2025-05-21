@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "CV Processor to extract structured data from PDF resumes using TypeScript",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "jest",
