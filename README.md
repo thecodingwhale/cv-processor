@@ -123,6 +123,9 @@ npm start -- process path/to/resume.pdf --use-ai gemini --ai-model gemini-1.5-fl
 # Specify conversion type (PDF to Images or PDF to Text)
 npm start -- process path/to/resume.pdf --conversion-type pdftoimages
 npm start -- process path/to/resume.pdf --conversion-type pdftotexts
+
+# Specify custom instructions file path
+npm start -- process path/to/resume.pdf --instructions-path ./custom-instructions.txt
 ```
 
 ### Parallel Processing
