@@ -59,6 +59,11 @@ program
     '--instructions-path <path>',
     'Path to the instructions file (defaults to instructions.txt in project root)'
   )
+  .option(
+    '--expected-total-fields <number>',
+    'Expected total number of fields for emptiness percentage calculation',
+    parseInt
+  )
   .action(async (pdfFile, options) => {
     try {
       // Validate input file
@@ -93,6 +98,7 @@ program
         instructionsPath:
           options.instructionsPath ||
           path.join(process.cwd(), 'instructions.txt'),
+        expectedTotalFields: options.expectedTotalFields,
       })
 
       // Process the CV with the specified conversion type

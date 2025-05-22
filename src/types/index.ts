@@ -33,6 +33,8 @@ export interface CVData {
       percentage: number
       totalFields: number
       nonEmptyFields: number
+      expectedTotalFields?: number
+      expectedPercentage?: number
     }
     tokenUsage?: {
       inputTokens: number
@@ -53,4 +55,5 @@ export interface ProcessorOptions {
   verbose?: boolean
   outputPath?: string
   instructionsPath?: string // Path to custom instructions file
+  expectedTotalFields?: number // Expected total number of fields for emptiness calculation
 }

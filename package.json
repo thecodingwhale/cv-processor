@@ -15,7 +15,7 @@
     "updateBaseMetrics": "node scripts/generate-base-metrics.js --update",
     "merge-reports": "node dist/index.js merge-reports",
     "merge-reports-charts": "node dist/index.js merge-reports --charts",
-    "merge-reports-html": "node dist/index.js merge-reports --html",
+    "merge-reports-html": "node dist/index.js merge-reports ./output --html",
     "render-charts": "ts-node src/scripts/render-charts.ts",
     "render-html-report": "ts-node src/scripts/render-charts.ts --html"
   },

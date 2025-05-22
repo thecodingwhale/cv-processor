@@ -162,12 +162,49 @@ const CONFIGURATIONS = [
   },
 ]
 
-// Get the CV path from command line arguments
-const cvPath = process.argv[2]
+// Parse command line arguments
+const args = process.argv.slice(2)
+let cvPath = null
+let expectedTotalFields = null
+
+// Parse arguments
+for (let i = 0; i < args.length; i++) {
+  // Check if argument is --expected-total-fields
+  if (args[i] === '--expected-total-fields' && i + 1 < args.length) {
+    expectedTotalFields = parseInt(args[i + 1])
+    i++ // Skip the next argument (the value)
+  }
+  // Check if it's just a number (for the parallel-with-expected script)
+  else if (!isNaN(parseInt(args[i])) && expectedTotalFields === null) {
+    expectedTotalFields = parseInt(args[i])
+  }
+  // Otherwise treat as CV path if we don't have one yet
+  else if (!cvPath && !args[i].startsWith('--')) {
+    cvPath = args[i]
+  }
+}
+
+// For npm run parallel-with-expected script, handle when args are reversed
+if (expectedTotalFields !== null && cvPath === null && args.length > 0) {
+  // If we have a number but no path, check the remaining args for a path
+  for (let i = 0; i < args.length; i++) {
+    if (
+      !args[i].startsWith('--') &&
+      args[i] !== expectedTotalFields.toString()
+    ) {
+      cvPath = args[i]
+      break
+    }
+  }
+}
 
 if (!cvPath) {
   console.error('Please provide a CV file path as an argument')
   console.error('Example: node scripts/run-parallel.js CVs/example.pdf')
+  console.error(
+    'You can also specify expected total fields: node scripts/run-parallel.js CVs/example.pdf --expected-total-fields 50'
+  )
+  console.error('Or: npm run parallel-with-expected 50 CVs/example.pdf')
   process.exit(1)
 }
 
@@ -190,12 +227,27 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true })
 }
 
+// If expectedTotalFields is provided, add it to all configurations
+if (expectedTotalFields) {
+  console.log(`Using expected total fields: ${expectedTotalFields}`)
+  // Add expectedTotalFields to all configurations
+  CONFIGURATIONS.forEach((config) => {
+    config.expectedTotalFields = expectedTotalFields
+  })
+}
+
 /**
  * Run a single CV processing task with specific provider and model
  */
 function runProcess(cvPath, config, outputDir) {
   return new Promise((resolve, reject) => {
-    const { provider, model, instructionsPath, conversionType } = config
+    const {
+      provider,
+      model,
+      instructionsPath,
+      conversionType,
+      expectedTotalFields,
+    } = config
 
     // Create a unique output file name for this configuration
     const outputFile = path.join(
@@ -234,6 +286,11 @@ function runProcess(cvPath, config, outputDir) {
 
     if (model) {
       args.push('--ai-model', model)
+    }
+
+    // Add expected total fields if provided
+    if (expectedTotalFields) {
+      args.push('--expected-total-fields', expectedTotalFields.toString())
     }
 
     // Spawn the process
@@ -479,11 +536,14 @@ function generateMarkdownReport(
 
   if (successResults.length > 0) {
     md += `## Successful Executions\n\n`
-    md += `| Provider | Model | Instructions Path | Conversion Type | Time (s) | Accuracy | Output File |\n`
-    md += `|----------|-------|-----------------|---------------|----------|----------|-------------|\n`
+    md += `| Provider | Model | Instructions Path | Conversion Type | Time (s) | Accuracy | Emptiness % | Expected Emptiness % | Emptiness Accuracy | Output File |\n`
+    md += `|----------|-------|-----------------|---------------|----------|----------|------------|---------------------|-------------------|-------------|\n`
 
     successResults.forEach((result) => {
       let accuracyScore = 'N/A'
+      let emptinessPercentage = 'N/A'
+      let expectedEmptinessPercentage = 'N/A'
+      let emptinessAccuracy = 'N/A'
 
       // Try to extract accuracy from the output file
       if (fs.existsSync(result.outputFile)) {
@@ -496,8 +556,37 @@ function generateMarkdownReport(
           ) {
             accuracyScore = `${data.metadata.accuracy.overall}%`
           }
+
+          // Extract emptiness percentage information
+          if (
+            data.metadata &&
+            data.metadata.emptinessPercentage &&
+            typeof data.metadata.emptinessPercentage.percentage === 'number'
+          ) {
+            emptinessPercentage = `${data.metadata.emptinessPercentage.percentage}%`
+
+            // Check for expected emptiness percentage
+            if (
+              data.metadata.emptinessPercentage.expectedTotalFields &&
+              typeof data.metadata.emptinessPercentage.expectedPercentage ===
+                'number'
+            ) {
+              expectedEmptinessPercentage = `${data.metadata.emptinessPercentage.expectedPercentage}%`
+
+              // Calculate emptiness accuracy (how close AI total fields are to expected)
+              const aiTotalFields =
+                data.metadata.emptinessPercentage.totalFields
+              const expectedTotalFields =
+                data.metadata.emptinessPercentage.expectedTotalFields
+              const fieldCountAccuracy =
+                (Math.min(aiTotalFields, expectedTotalFields) /
+                  Math.max(aiTotalFields, expectedTotalFields)) *
+                100
+              emptinessAccuracy = `${fieldCountAccuracy.toFixed(1)}%`
+            }
+          }
         } catch (e) {
-          console.warn(`Couldn't read accuracy from ${result.outputFile}`)
+          console.warn(`Couldn't read data from ${result.outputFile}`)
         }
       }
 
@@ -506,7 +595,7 @@ function generateMarkdownReport(
         result.instructionsPath
       } | ${result.conversionType} | ${
         result.processingTime ? result.processingTime.toFixed(2) : 'N/A'
-      } | ${accuracyScore} | [View](./${fileName}) |\n`
+      } | ${accuracyScore} | ${emptinessPercentage} | ${expectedEmptinessPercentage} | ${emptinessAccuracy} | [View](./${fileName}) |\n`
     })
     md += `\n`
   }
@@ -609,23 +698,6 @@ function generateMarkdownReport(
         }% | ${accuracy.completeness}% | ${accuracy.structuralValidity}% |\n`
       }
     })
-
-    // Find the best performer in each category
-    const bestOverall = resultsWithAccuracy.reduce(
-      (best, current) => {
-        const data = JSON.parse(fs.readFileSync(current.outputFile, 'utf8'))
-        return best.score > data.metadata.accuracy.overall
-          ? best
-          : {
-              provider: current.provider,
-              model: current.model || 'default',
-              score: data.metadata.accuracy.overall,
-            }
-      },
-      { provider: 'none', model: 'none', score: 0 }
-    )
-
-    md += `\n**Best Overall Accuracy**: ${bestOverall.provider} (${bestOverall.model}) - ${bestOverall.score}%\n`
   }
 
   // Add emptiness percentage comparison if available
@@ -634,8 +706,8 @@ function generateMarkdownReport(
     resultsWithEmptinessPercentage.length > 0
   ) {
     md += `\n## Field Emptiness Comparison\n\n`
-    md += `| Provider | Model | Instructions Path | Conversion Type | Populated Fields | Total Fields | Emptiness % |\n`
-    md += `|----------|-------|-----------------|---------------|-----------------|--------------|------------|\n`
+    md += `| Provider | Model | Instructions Path | Conversion Type | Populated Fields | Total Fields | Emptiness % | Expected Fields | Expected Emptiness % | Emptiness Accuracy |\n`
+    md += `|----------|-------|-----------------|---------------|-----------------|--------------|------------|---------------|------------------|-----------------|\n`
 
     // Sort by emptiness percentage (highest first)
     const sortedEmptinessResults = [...resultsWithEmptinessPercentage].sort(
@@ -653,11 +725,31 @@ function generateMarkdownReport(
       const data = JSON.parse(fs.readFileSync(result.outputFile, 'utf8'))
       const emptiness = data.metadata.emptinessPercentage
 
+      const expectedFields = emptiness.expectedTotalFields || '-'
+      const expectedPercentage =
+        emptiness.expectedPercentage !== undefined
+          ? `${emptiness.expectedPercentage}%`
+          : '-'
+
+      // Calculate emptiness accuracy if expected total fields exists
+      let emptinessAccuracy = '-'
+      if (emptiness.expectedTotalFields) {
+        const aiTotalFields = emptiness.totalFields
+        const expectedTotalFields = emptiness.expectedTotalFields
+        const fieldCountAccuracy =
+          (Math.min(aiTotalFields, expectedTotalFields) /
+            Math.max(aiTotalFields, expectedTotalFields)) *
+          100
+        emptinessAccuracy = `${fieldCountAccuracy.toFixed(1)}%`
+      }
+
       md += `| ${result.provider} | ${result.model || 'default'} | ${
         result.instructionsPath
       } | ${result.conversionType} | ${emptiness.nonEmptyFields} | ${
         emptiness.totalFields
-      } | ${emptiness.percentage}% |\n`
+      } | ${
+        emptiness.percentage
+      }% | ${expectedFields} | ${expectedPercentage} | ${emptinessAccuracy} |\n`
     })
 
     // Find the best performer in field completeness
@@ -672,6 +764,12 @@ function generateMarkdownReport(
   }
 
   return md
+}
+
+// Export the function for use in other files
+module.exports = {
+  runProcess,
+  generateMarkdownReport,
 }
 
 /**

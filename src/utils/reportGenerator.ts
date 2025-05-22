@@ -255,7 +255,13 @@ export class ReportGenerator {
         const nonEmptyFields = emptinessPercentage?.nonEmptyFields ?? 'N/A'
         const totalFields = emptinessPercentage?.totalFields ?? 'N/A'
 
-        report += `| ${execution.provider} | ${execution.model} | ${nonEmptyFields} | ${totalFields} | ${percentage}% |\n`
+        report += `| ${execution.provider} | ${
+          execution.model || 'default'
+        } | ${nonEmptyFields} | ${totalFields} | ${
+          typeof percentage === 'number'
+            ? `${(percentage * 100).toFixed(1)}%`
+            : percentage
+        } |\n`
       })
 
       // Sort by accuracy

@@ -14,6 +14,7 @@ export class AICVProcessor {
   private aiProvider: AIProvider
   private verbose: boolean
   private instructionsPath: string
+  private expectedTotalFields?: number
 
   // private industryContext: string // Store industry context for patterns
 
@@ -25,10 +26,14 @@ export class AICVProcessor {
     this.verbose = options.verbose || false
     this.instructionsPath =
       options.instructionsPath || path.join(process.cwd(), 'instructions.txt')
+    this.expectedTotalFields = options.expectedTotalFields
 
     if (this.verbose) {
       console.log('AI CV Processor initialized')
       console.log(`Using instructions from: ${this.instructionsPath}`)
+      if (this.expectedTotalFields) {
+        console.log(`Expected total fields: ${this.expectedTotalFields}`)
+      }
     }
   }
 
@@ -224,7 +229,10 @@ export class AICVProcessor {
 
       // Calculate emptiness percentage
       const emptinessResult =
-        EmptinessPercentageCalculator.calculateEmptinessPercentage(cvData)
+        EmptinessPercentageCalculator.calculateEmptinessPercentage(
+          cvData,
+          this.expectedTotalFields
+        )
       cvData.metadata.emptinessPercentage = emptinessResult
 
       // Add standard log message for emptiness percentage score (not conditional on verbose)
@@ -239,6 +247,11 @@ export class AICVProcessor {
         console.log(
           `[AICVProcessor] Total fields: ${emptinessResult.totalFields}, Non-empty fields: ${emptinessResult.nonEmptyFields}`
         )
+        if (emptinessResult.expectedTotalFields) {
+          console.log(
+            `[AICVProcessor] Expected emptiness percentage: ${emptinessResult.expectedPercentage}% (based on ${emptinessResult.expectedTotalFields} expected fields)`
+          )
+        }
       }
 
       return cvData

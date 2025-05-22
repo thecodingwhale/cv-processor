@@ -5,6 +5,8 @@ export interface EmptinessPercentageResult {
   percentage: number
   totalFields: number
   nonEmptyFields: number
+  expectedTotalFields?: number
+  expectedPercentage?: number
 }
 
 /**
@@ -16,7 +18,8 @@ export class EmptinessPercentageCalculator {
    * Returns the percentage of non-empty fields as a value between 0-100
    */
   public static calculateEmptinessPercentage(
-    data: any
+    data: any,
+    expectedTotalFields?: number
   ): EmptinessPercentageResult {
     const counts = this.countFieldsRecursive(data)
 
@@ -26,11 +29,23 @@ export class EmptinessPercentageCalculator {
         ? Math.round((counts.nonEmptyFields / counts.totalFields) * 100)
         : 0
 
-    return {
+    // Create result object
+    const result: EmptinessPercentageResult = {
       percentage,
       totalFields: counts.totalFields,
       nonEmptyFields: counts.nonEmptyFields,
     }
+
+    // Calculate expected percentage if expectedTotalFields is provided
+    if (expectedTotalFields !== undefined) {
+      result.expectedTotalFields = expectedTotalFields
+      result.expectedPercentage =
+        expectedTotalFields > 0
+          ? Math.round((counts.nonEmptyFields / expectedTotalFields) * 100)
+          : 0
+    }
+
+    return result
   }
 
   /**

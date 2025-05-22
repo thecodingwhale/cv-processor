@@ -126,6 +126,9 @@ npm start -- process path/to/resume.pdf --conversion-type pdftotexts
 
 # Specify custom instructions file path
 npm start -- process path/to/resume.pdf --instructions-path ./custom-instructions.txt
+
+# Specify expected total fields for emptiness percentage calculation
+npm start -- process path/to/resume.pdf --expected-total-fields 50
 ```
 
 ### Parallel Processing
@@ -135,7 +138,18 @@ You can process a CV with multiple AI providers in parallel:
 ```bash
 # Process with all configured providers simultaneously
 npm run parallel path/to/resume.pdf
+
+# Process with all providers while specifying expected total fields
+npm run parallel path/to/resume.pdf --expected-total-fields 50
+
+# Example with a real file path
+npm run parallel ./CVs/KRISTEEN-LY-castingnetworks.pdf --expected-total-fields 108
 ```
+
+When using the `--expected-total-fields` parameter, the system will calculate two emptiness percentages:
+
+1. The default percentage based on AI-determined total fields
+2. A percentage based on your specified expected total field count
 
 This will:
 
@@ -143,6 +157,7 @@ This will:
 2. Save all results to an organized output directory
 3. Generate a markdown report comparing performance and results
 4. Track processing time for benchmarking purposes
+5. Include both AI-determined and user-expected emptiness percentages in the report when `--expected-total-fields` is used
 
 The output will be saved to: `output/CVName_YYYY-MM-DD_HH-MM-SS/`
 
