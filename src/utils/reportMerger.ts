@@ -11,6 +11,7 @@ interface ProviderMetrics {
   completeness?: number
   structure?: number
   emptinessPercentage?: number
+  expectedPercentage?: number
   count: number
   successRate: number
   files: string[]
@@ -31,6 +32,7 @@ interface Report {
     completeness?: number
     structure?: number
     emptinessPercentage?: number
+    expectedPercentage?: number
     outputFile: string
     conversionType?: string
     instructionPath?: string
@@ -107,6 +109,7 @@ export async function mergeReports(outputDir: string): Promise<string> {
         percentage: number
         nonEmptyFields: number
         totalFields: number
+        expectedPercentage?: number
       }
     > = {}
 
@@ -166,6 +169,14 @@ export async function mergeReports(outputDir: string): Promise<string> {
           if (isNaN(percentage)) percentage = 0
         }
 
+        // Parse expected emptiness percentage if available
+        let expectedPercentage = undefined
+        if (columns.length >= 8 && columns[7] !== 'N/A' && columns[7] !== '-') {
+          const expectedPercentStr = columns[7].replace('%', '')
+          expectedPercentage = parseFloat(expectedPercentStr) / 100
+          if (isNaN(expectedPercentage)) expectedPercentage = undefined
+        }
+
         // Create a key to match with execution data
         const key = `${provider}_${model}`
 
@@ -174,6 +185,7 @@ export async function mergeReports(outputDir: string): Promise<string> {
           percentage,
           nonEmptyFields,
           totalFields,
+          expectedPercentage,
         }
       }
     }
@@ -306,6 +318,7 @@ export async function mergeReports(outputDir: string): Promise<string> {
           completeness: 0,
           structure: 0,
           emptinessPercentage: 0,
+          expectedPercentage: 0,
           count: 0,
           successRate: 0,
           files: [],
@@ -319,9 +332,18 @@ export async function mergeReports(outputDir: string): Promise<string> {
       if (completeness)
         report.providers[providerKey].completeness! += completeness
       if (structure) report.providers[providerKey].structure! += structure
-      if (emptiness)
+      if (emptiness) {
         report.providers[providerKey].emptinessPercentage! +=
           emptiness.percentage
+        if (emptiness.expectedPercentage !== undefined) {
+          // Initialize if undefined
+          if (report.providers[providerKey].expectedPercentage === undefined) {
+            report.providers[providerKey].expectedPercentage = 0
+          }
+          report.providers[providerKey].expectedPercentage! +=
+            emptiness.expectedPercentage
+        }
+      }
       report.providers[providerKey].count += 1
       report.providers[providerKey].files.push(
         path.join(dirName, execution.outputFile)
@@ -339,6 +361,7 @@ export async function mergeReports(outputDir: string): Promise<string> {
           completeness: 0,
           structure: 0,
           emptinessPercentage: 0,
+          expectedPercentage: 0,
           count: 0,
           successRate: 0,
           files: [],
@@ -350,8 +373,17 @@ export async function mergeReports(outputDir: string): Promise<string> {
       if (fieldAccuracy) report.models[modelKey].fieldAccuracy! += fieldAccuracy
       if (completeness) report.models[modelKey].completeness! += completeness
       if (structure) report.models[modelKey].structure! += structure
-      if (emptiness)
+      if (emptiness) {
         report.models[modelKey].emptinessPercentage! += emptiness.percentage
+        if (emptiness.expectedPercentage !== undefined) {
+          // Initialize if undefined
+          if (report.models[modelKey].expectedPercentage === undefined) {
+            report.models[modelKey].expectedPercentage = 0
+          }
+          report.models[modelKey].expectedPercentage! +=
+            emptiness.expectedPercentage
+        }
+      }
       report.models[modelKey].count += 1
       report.models[modelKey].files.push(
         path.join(dirName, execution.outputFile)
@@ -368,6 +400,7 @@ export async function mergeReports(outputDir: string): Promise<string> {
         completeness,
         structure,
         emptinessPercentage: emptiness ? emptiness.percentage : undefined,
+        expectedPercentage: emptiness?.expectedPercentage,
         outputFile: path.join(dirName, execution.outputFile),
         conversionType: execution.conversionType,
         instructionPath: execution.instructionPath,
@@ -497,6 +530,9 @@ export async function mergeReports(outputDir: string): Promise<string> {
       if (provider.emptinessPercentage !== undefined)
         provider.emptinessPercentage =
           provider.emptinessPercentage / provider.count
+      if (provider.expectedPercentage !== undefined)
+        provider.expectedPercentage =
+          provider.expectedPercentage / provider.count
     }
   }
 
@@ -512,6 +548,8 @@ export async function mergeReports(outputDir: string): Promise<string> {
         model.structure = model.structure / model.count
       if (model.emptinessPercentage !== undefined)
         model.emptinessPercentage = model.emptinessPercentage / model.count
+      if (model.expectedPercentage !== undefined)
+        model.expectedPercentage = model.expectedPercentage / model.count
     }
   }
 
@@ -672,8 +710,8 @@ function generateMarkdownReport(report: Report): string {
   markdown += '```\n\n'
 
   markdown += `\n## Best Models by Accuracy\n\n`
-  markdown += `| Provider | Model | Avg Accuracy | Avg Field Accuracy | Avg Emptiness | Conversion Types | Instructions | Runs |\n`
-  markdown += `|----------|-------|-------------|-------------------|--------------|----------------|-------------|------|\n`
+  markdown += `| Provider | Model | Avg Accuracy | Avg Field Accuracy | Avg Emptiness | Avg Expected Emptiness | Conversion Types | Instructions | Runs |\n`
+  markdown += `|----------|-------|-------------|-------------------|--------------|-----------------------|----------------|-------------|------|\n`
   for (const model of sortedModels) {
     markdown += `| ${model.provider} | ${model.model} | ${(
       model.accuracy * 100
@@ -684,6 +722,10 @@ function generateMarkdownReport(report: Report): string {
     } | ${
       model.emptinessPercentage !== undefined
         ? `${model.emptinessPercentage.toFixed(1)}%`
+        : '-'
+    } | ${
+      model.expectedPercentage !== undefined
+        ? `${model.expectedPercentage.toFixed(1)}%`
         : '-'
     } | ${formatConversionTypes(
       model.conversionTypes
@@ -909,12 +951,16 @@ function generateMarkdownReport(report: Report): string {
   markdown += '```\n\n'
 
   markdown += `\n## Best Models by Field Emptiness\n\n`
-  markdown += `| Provider | Model | Avg Emptiness | Conversion Types | Instructions | Runs |\n`
-  markdown += `|----------|-------|--------------|----------------|-------------|------|\n`
+  markdown += `| Provider | Model | Avg Emptiness | Avg Expected Emptiness | Conversion Types | Instructions | Runs |\n`
+  markdown += `|----------|-------|--------------|-----------------------|----------------|-------------|------|\n`
   for (const model of bestEmptinessModels) {
     markdown += `| ${model.provider} | ${model.model} | ${
       model.emptinessPercentage ? model.emptinessPercentage.toFixed(1) : '-'
-    }% | ${formatConversionTypes(
+    }% | ${
+      model.expectedPercentage !== undefined
+        ? `${model.expectedPercentage.toFixed(1)}%`
+        : '-'
+    } | ${formatConversionTypes(
       model.conversionTypes
     )} | ${formatInstructionPaths(model.instructionPaths)} | ${model.count} |\n`
   }
@@ -956,7 +1002,16 @@ function generateMarkdownReport(report: Report): string {
       bestEmptinessModel.emptinessPercentage
         ? bestEmptinessModel.emptinessPercentage.toFixed(1)
         : '-'
-    }% field emptiness percentage.\n\n`
+    }% field emptiness percentage`
+
+    // Add expected emptiness if available
+    if (bestEmptinessModel.expectedPercentage !== undefined) {
+      markdown += ` (expected: ${bestEmptinessModel.expectedPercentage.toFixed(
+        1
+      )}%)`
+    }
+
+    markdown += `.\n\n`
   }
 
   // Most cost-effective model
@@ -983,8 +1038,8 @@ function generateMarkdownReport(report: Report): string {
   }
 
   markdown += `## All Runs\n\n`
-  markdown += `| CV | Provider | Model | Accuracy | Field Accuracy | Emptiness | Processing Time (s) | Conversion Type | Instructions | Total Tokens | Est. Cost |\n`
-  markdown += `|----|----------|-------|----------|---------------|-----------|---------------------|----------------|-------------|--------------|----------|\n`
+  markdown += `| CV | Provider | Model | Accuracy | Field Accuracy | Emptiness | Expected Emptiness | Processing Time (s) | Conversion Type | Instructions | Total Tokens | Est. Cost |\n`
+  markdown += `|----|----------|-------|----------|---------------|-----------|-------------------|---------------------|----------------|-------------|--------------|----------|\n`
   for (const run of report.allRuns) {
     const totalTokens = run.tokenUsage ? run.tokenUsage.totalTokens : 'N/A'
     const estCost =
@@ -999,12 +1054,16 @@ function generateMarkdownReport(report: Report): string {
       run.fieldAccuracy !== undefined
         ? `${(run.fieldAccuracy * 100).toFixed(1)}%`
         : 'N/A'
+    const expectedEmptinessValue =
+      run.expectedPercentage !== undefined
+        ? `${(run.expectedPercentage * 100).toFixed(1)}%`
+        : 'N/A'
 
     markdown += `| ${run.cvName} | ${run.provider} | ${run.model} | ${(
       run.accuracy * 100
     ).toFixed(
       1
-    )}% | ${fieldAccuracyValue} | ${emptinessValue} | ${run.processingTime.toFixed(
+    )}% | ${fieldAccuracyValue} | ${emptinessValue} | ${expectedEmptinessValue} | ${run.processingTime.toFixed(
       2
     )} | ${formatConversionType(run.conversionType)} | ${formatInstructionPath(
       run.instructionPath
