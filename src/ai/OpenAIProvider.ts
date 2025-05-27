@@ -145,10 +145,13 @@ export class OpenAIProvider implements AIProvider {
         try {
           fixedJson = jsonrepair(responseText)
         } catch (err) {
-          console.error('❌ Could not repair JSON:', err)
-          throw new Error(`AI returned invalid JSON: ${err}`)
+          try {
+            fixedJson = jsonrepair(responseText)
+          } catch (err) {
+            console.error('❌ Could not repair JSON:', err)
+            throw new Error(`AI returned invalid JSON: ${err}`)
+          }
         }
-
         const parsedJson = JSON.parse(fixedJson)
 
         return {

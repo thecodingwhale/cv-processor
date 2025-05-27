@@ -24,6 +24,16 @@ const GROK_AI_PRICING: Record<string, ModelPricing> = {
   default: { input: 0.002, output: 0.01 },
 }
 
+/**
+ * Models that support structured output (response_format)
+ */
+const MODELS_WITH_STRUCTURED_OUTPUT = [
+  'grok-2-vision-1212',
+  'grok-2',
+  'grok-beta',
+  'grok-vision-beta',
+]
+
 export class GrokAIProvider implements AIProvider {
   private client: OpenAI
   private config: GrokAIConfig
@@ -41,6 +51,15 @@ export class GrokAIProvider implements AIProvider {
       apiKey: config.apiKey,
       baseURL: 'https://api.x.ai/v1',
     })
+  }
+
+  /**
+   * Check if the current model supports structured output
+   */
+  private supportsStructuredOutput(model: string): boolean {
+    return MODELS_WITH_STRUCTURED_OUTPUT.some((supportedModel) =>
+      model.toLowerCase().includes(supportedModel.toLowerCase())
+    )
   }
 
   /**
@@ -117,11 +136,20 @@ export class GrokAIProvider implements AIProvider {
         },
       ]
 
-      const completion = await this.client.chat.completions.create({
+      // Prepare the completion request
+      const completionRequest: any = {
         model: modelName,
         messages: messages,
-        response_format: { type: 'json_object' },
-      })
+      }
+
+      // Only add response_format if the model supports it
+      if (this.supportsStructuredOutput(modelName)) {
+        completionRequest.response_format = { type: 'json_object' }
+      }
+
+      const completion = await this.client.chat.completions.create(
+        completionRequest
+      )
 
       const responseText = completion.choices[0]?.message?.content || '{}'
 
@@ -155,8 +183,12 @@ export class GrokAIProvider implements AIProvider {
         try {
           fixedJson = jsonrepair(responseText)
         } catch (err) {
-          console.error('❌ Could not repair JSON:', err)
-          throw new Error(`AI returned invalid JSON: ${err}`)
+          try {
+            fixedJson = jsonrepair(responseText)
+          } catch (err) {
+            console.error('❌ Could not repair JSON:', err)
+            throw new Error(`AI returned invalid JSON: ${err}`)
+          }
         }
         const parsedJson = JSON.parse(fixedJson)
         return {
@@ -179,6 +211,8 @@ export class GrokAIProvider implements AIProvider {
     instructions: string
   ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
     try {
+      const modelName = this.config.model || 'grok-2-vision-1212'
+
       const prompt = `
         ${instructions}
         Extract information from the following text according to this JSON schema:
@@ -189,16 +223,25 @@ export class GrokAIProvider implements AIProvider {
         ${texts.join('\n\n')}
       `
 
-      const completion = await this.client.chat.completions.create({
-        model: this.config.model || 'grok-2-vision-1212',
+      // Prepare the completion request
+      const completionRequest: any = {
+        model: modelName,
         messages: [
           {
             role: 'system',
             content: prompt,
           },
         ],
-        response_format: { type: 'json_object' },
-      })
+      }
+
+      // Only add response_format if the model supports it
+      if (this.supportsStructuredOutput(modelName)) {
+        completionRequest.response_format = { type: 'json_object' }
+      }
+
+      const completion = await this.client.chat.completions.create(
+        completionRequest
+      )
 
       const responseText = completion.choices[0]?.message?.content || '{}'
 
@@ -212,7 +255,6 @@ export class GrokAIProvider implements AIProvider {
         completion.usage?.total_tokens || promptTokens + completionTokens
 
       // Calculate estimated cost
-      const modelName = this.config.model || 'grok-2-vision-1212'
       const estimatedCost = this.calculateCost(
         promptTokens,
         completionTokens,
