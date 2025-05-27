@@ -15,6 +15,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { AICVProcessor } from './AICVProcessor'
 import { AIProviderFactory, AIProviderType } from './ai/AIProviderFactory'
+import registerCreateCsvCommand from './cli/createCsv'
 import registerMergeReportsCommand from './cli/mergeReports'
 import { CVData } from './types'
 import { AIProvider, ConversionType } from './types/AIProvider'
@@ -124,6 +125,9 @@ program
 
 // Register the merge-reports command using the function from cli/mergeReports.ts
 registerMergeReportsCommand(program)
+
+// Register the create-csv command using the function from cli/createCsv.ts
+registerCreateCsvCommand(program)
 
 // For backward compatibility, make 'process' the default command
 program.parse(process.argv)
