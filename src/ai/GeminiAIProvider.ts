@@ -1,4 +1,4 @@
-import { GenerativeModel, GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { jsonrepair } from 'jsonrepair'
 import { AIModelConfig, AIProvider, TokenUsageInfo } from '../types/AIProvider'
 import { replaceUUIDv4Placeholders } from '../utils/data'
@@ -33,29 +33,12 @@ const GEMINI_PRICING: Record<string, ModelPricing> = {
 }
 
 export class GeminiAIProvider implements AIProvider {
-  private generativeModel: GenerativeModel
+  private ai: GoogleGenAI
   private config: AIModelConfig
 
   constructor(config: AIModelConfig) {
     this.config = config
-
-    const model = config.model || 'gemini-1.5-pro'
-
-    // Set topK to 40 if using gemini-1.5-flash-8b model which has a limitation
-    // of topK value from 1-41 (exclusive)
-    const topK = model === 'gemini-1.5-flash-8b' ? 40 : 50
-
-    const genAI = new GoogleGenerativeAI(config.apiKey)
-    this.generativeModel = genAI.getGenerativeModel({
-      model: model,
-      generationConfig: {
-        temperature: config.temperature || 0,
-        maxOutputTokens: config.maxTokens || 8192,
-        topP: 1,
-        topK: topK,
-        candidateCount: 1,
-      },
-    })
+    this.ai = new GoogleGenAI({ apiKey: config.apiKey })
   }
 
   /**
@@ -82,36 +65,137 @@ export class GeminiAIProvider implements AIProvider {
     return Math.ceil(text.length / 4)
   }
 
+  /**
+   * Convert image URLs to proper content parts for the new API
+   */
+  private async createImageParts(imageUrls: string[]): Promise<any[]> {
+    const imageParts = []
+
+    for (const imageUrl of imageUrls) {
+      try {
+        if (imageUrl.startsWith('data:image/')) {
+          // Handle data URLs (base64-encoded images)
+          const [mimeTypePart, base64Data] = imageUrl.split(',')
+          const mimeType = mimeTypePart.split(':')[1].split(';')[0]
+
+          imageParts.push({
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data,
+            },
+          })
+        } else if (
+          imageUrl.startsWith('http://') ||
+          imageUrl.startsWith('https://')
+        ) {
+          // Handle web URLs by fetching and converting to base64
+          const response = await fetch(imageUrl)
+          if (!response.ok) {
+            console.warn(
+              `Failed to fetch image from ${imageUrl}: ${response.statusText}`
+            )
+            continue
+          }
+
+          const arrayBuffer = await response.arrayBuffer()
+          const base64Data = Buffer.from(arrayBuffer).toString('base64')
+
+          // Determine MIME type from response headers or URL extension
+          let mimeType = response.headers.get('content-type') || 'image/jpeg'
+          if (!mimeType.startsWith('image/')) {
+            // Fallback based on URL extension
+            if (imageUrl.toLowerCase().includes('.png')) {
+              mimeType = 'image/png'
+            } else if (imageUrl.toLowerCase().includes('.webp')) {
+              mimeType = 'image/webp'
+            } else {
+              mimeType = 'image/jpeg'
+            }
+          }
+
+          imageParts.push({
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data,
+            },
+          })
+        } else if (imageUrl.startsWith('gs://')) {
+          // Handle Google Cloud Storage URLs
+          imageParts.push({
+            fileData: {
+              mimeType: 'image/jpeg', // Default, could be improved with better detection
+              fileUri: imageUrl,
+            },
+          })
+        } else {
+          console.warn(`Unsupported image URL format: ${imageUrl}`)
+        }
+      } catch (error) {
+        console.error(`Error processing image URL ${imageUrl}:`, error)
+      }
+    }
+
+    return imageParts
+  }
+
   async extractStructuredDataFromImages<T>(
     imageUrls: string[],
     dataSchema: object,
     instructions: string
   ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
     try {
-      const prompt = `
-        ${instructions}
-        
-        Extract information from the following document according to this JSON schema:
-        ${JSON.stringify(dataSchema, null, 2)}
-                
-        Images
-        ${imageUrls}
+      const model = this.config.model || 'gemini-1.5-pro'
 
-        Your response should be valid JSON that matches this schema.
-      `
+      // Create proper image content parts
+      const imageParts = await this.createImageParts(imageUrls)
 
-      const result = await this.generativeModel.generateContent(prompt)
-      const response = await result.response
-      const responseText = response.text()
+      if (imageParts.length === 0) {
+        throw new Error(
+          'No valid images could be processed from the provided URLs'
+        )
+      }
 
-      // Gemini API doesn't provide easy access to token counts like OpenAI
-      // Use estimation instead
-      const promptTokens = this.estimateTokenCount(prompt)
+      // Create the content array with text and images
+      const contents = [
+        { text: instructions },
+        {
+          text: `Extract information according to this JSON schema: ${JSON.stringify(
+            dataSchema,
+            null,
+            2
+          )}`,
+        },
+        {
+          text: 'Your response should be valid JSON that matches this schema.',
+        },
+        ...imageParts,
+      ]
+
+      // Set topK to 40 if using gemini-1.5-flash-8b model which has a limitation
+      const topK = model === 'gemini-1.5-flash-8b' ? 40 : 50
+
+      const result = await this.ai.models.generateContent({
+        model: model,
+        contents: contents,
+        config: {
+          temperature: this.config.temperature || 0,
+          maxOutputTokens: this.config.maxTokens || 8192,
+          topP: 1,
+          topK: topK,
+          candidateCount: 1,
+        },
+      })
+
+      const responseText = result.text || ''
+
+      // Estimate token usage (the new API doesn't provide easy access to token counts)
+      const promptTokens =
+        this.estimateTokenCount(instructions + JSON.stringify(dataSchema)) +
+        imageParts.length * 258 // 258 tokens per image
       const completionTokens = this.estimateTokenCount(responseText)
       const totalTokens = promptTokens + completionTokens
 
       // Calculate estimated cost
-      const model = this.config.model || 'gemini-1.5-pro'
       const estimatedCost = this.calculateCost(
         promptTokens,
         completionTokens,
@@ -131,8 +215,12 @@ export class GeminiAIProvider implements AIProvider {
         try {
           fixedJson = jsonrepair(responseText)
         } catch (err) {
-          console.error('❌ Could not repair JSON:', err)
-          throw new Error(`AI returned invalid JSON: ${err}`)
+          try {
+            fixedJson = jsonrepair(responseText)
+          } catch (err) {
+            console.error('❌ Could not repair JSON:', err)
+            throw new Error(`AI returned invalid JSON: ${err}`)
+          }
         }
 
         const parsedJson = JSON.parse(fixedJson)
@@ -169,18 +257,31 @@ export class GeminiAIProvider implements AIProvider {
         ${texts.join('\n\n')}
       `
 
-      const result = await this.generativeModel.generateContent(prompt)
-      const response = await result.response
-      const responseText = response.text()
+      const model = this.config.model || 'gemini-1.5-pro'
 
-      // Gemini API doesn't provide easy access to token counts like OpenAI
-      // Use estimation instead
+      // Set topK to 40 if using gemini-1.5-flash-8b model which has a limitation
+      const topK = model === 'gemini-1.5-flash-8b' ? 40 : 50
+
+      const result = await this.ai.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          temperature: this.config.temperature || 0,
+          maxOutputTokens: this.config.maxTokens || 8192,
+          topP: 1,
+          topK: topK,
+          candidateCount: 1,
+        },
+      })
+
+      const responseText = result.text || ''
+
+      // Estimate token usage
       const promptTokens = this.estimateTokenCount(prompt)
       const completionTokens = this.estimateTokenCount(responseText)
       const totalTokens = promptTokens + completionTokens
 
       // Calculate estimated cost
-      const model = this.config.model || 'gemini-1.5-pro'
       const estimatedCost = this.calculateCost(
         promptTokens,
         completionTokens,

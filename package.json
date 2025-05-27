@@ -17,7 +17,8 @@
     "merge-reports-charts": "node dist/index.js merge-reports --charts",
     "merge-reports-html": "node dist/index.js merge-reports ./output --html",
     "render-charts": "ts-node src/scripts/render-charts.ts",
-    "render-html-report": "ts-node src/scripts/render-charts.ts --html"
+    "render-html-report": "ts-node src/scripts/render-charts.ts --html",
+    "create-csv": "node dist/index.js create-csv"
   },
   "keywords": [
     "CV",
@@ -30,7 +31,7 @@
   "license": "MIT",
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.803.0",
-    "@google/generative-ai": "^0.3.0",
+    "@google/genai": "^1.1.0",
     "commander": "^11.1.0",
     "compromise": "^14.11.0",
     "dotenv": "^16.3.1",
