@@ -7,8 +7,164 @@ const {
   ConsensusAccuracyScorer,
 } = require('../dist/utils/ConsensusAccuracyScorer')
 
-// Configuration of providers and models to run
 const CONFIGURATIONS = [
+  ///// OPEN AI
+  {
+    provider: 'openai',
+    model: 'gpt-3.5-turbo',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-4o',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-4o',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-4.1',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'openai',
+    model: 'gpt-4.1',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  ///// GEMINI
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-pro',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-pro',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-flash',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-flash',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-flash-8b',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-1.5-flash-8b',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-2.0-flash-lite',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-2.0-flash-lite',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-2.5-pro-preview-05-06',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-2.5-pro-preview-05-06',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-2.5-flash-preview-05-20',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  //// AWS
+  {
+    provider: 'aws',
+    model: 'apac.amazon.nova-micro-v1:0',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'aws',
+    model: 'apac.amazon.nova-lite-v1:0',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'aws',
+    model: 'apac.amazon.nova-lite-v1:0',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+  //// GROK
+  {
+    provider: 'grok',
+    model: 'grok-3',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-3-fast',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-3-mini',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-3-mini-fast',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-2-vision-1212',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftotexts',
+  },
+  {
+    provider: 'grok',
+    model: 'grok-2-vision-1212',
+    instructionsPath: './instructions.txt',
+    conversionType: 'pdftoimages',
+  },
+]
+// Configuration of providers and models to run
+const CONFIGURATIONSX = [
   // -- ./instructions.txt with pdftotexts --
   {
     provider: 'aws',
@@ -37,12 +193,6 @@ const CONFIGURATIONS = [
   {
     provider: 'gemini',
     model: 'gemini-1.5-flash-8b',
-    instructionsPath: './instructions.txt',
-    conversionType: 'pdftotexts',
-  },
-  {
-    provider: 'azure',
-    model: 'o3-mini',
     instructionsPath: './instructions.txt',
     conversionType: 'pdftotexts',
   },
@@ -81,12 +231,6 @@ const CONFIGURATIONS = [
   {
     provider: 'gemini',
     model: 'gemini-1.5-flash-8b',
-    instructionsPath: './instructions_version_1.txt',
-    conversionType: 'pdftotexts',
-  },
-  {
-    provider: 'azure',
-    model: 'o3-mini',
     instructionsPath: './instructions_version_1.txt',
     conversionType: 'pdftotexts',
   },
