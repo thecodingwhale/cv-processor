@@ -1,12 +1,12 @@
 import * as cheerio from 'cheerio'
 import * as fs from 'fs'
-import fetch from 'node-fetch'
 import * as path from 'path'
+import { Browser, chromium, Page } from 'playwright'
 import { CVData, ProcessorOptions } from './types'
 import { AIProvider, ConversionType } from './types/AIProvider'
 import { ConsensusAccuracyScorer } from './utils/ConsensusAccuracyScorer'
-import { EmptinessPercentageCalculator } from './utils/EmptinessPercentageCalculator'
 import { convertPdfToImages, convertPdfToTexts } from './utils/document'
+import { EmptinessPercentageCalculator } from './utils/EmptinessPercentageCalculator'
 import { ReportGenerator } from './utils/reportGenerator'
 
 /**
@@ -107,22 +107,8 @@ export class AICVProcessor {
         console.log(`Fetching content from URL: ${url}`)
       }
 
-      // Fetch the webpage content
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; CV-Processor/1.0)',
-          Accept:
-            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(
-          `HTTP error! status: ${response.status} - ${response.statusText}`
-        )
-      }
-
-      const html = await response.text()
+      // Use Playwright to fetch content with 5-second wait for dynamic content
+      const html = await this.fetchUrlWithPlaywright(url)
 
       if (this.verbose) {
         console.log(`Fetched ${html.length} characters of HTML content`)
@@ -131,10 +117,23 @@ export class AICVProcessor {
       // Parse HTML and extract text using Cheerio
       const $ = cheerio.load(html)
 
+      if (this.verbose) {
+        console.log(`HTML snippet: ${html.substring(0, 1000)}...`)
+      }
+
       // Remove script, style, and other non-content elements
       $(
         'script, style, noscript, iframe, nav, header, footer, aside, form'
       ).remove()
+
+      // First, try to get all text content
+      let allText = $('body').text().trim()
+
+      if (this.verbose) {
+        console.log(
+          `All body text (first 500 chars): ${allText.substring(0, 500)}...`
+        )
+      }
 
       // Extract text from relevant elements
       const textElements = [
@@ -160,11 +159,21 @@ export class AICVProcessor {
       textElements.forEach((selector) => {
         $(selector).each((_, element) => {
           const text = $(element).text().trim()
-          if (text && text.length > 0) {
+          if (text && text.length > 10) {
             extractedText += text + '\n'
           }
         })
       })
+
+      // If specific element extraction fails, use all body text
+      if (!extractedText || extractedText.length < 100) {
+        extractedText = allText
+        if (this.verbose) {
+          console.log(
+            'Using all body text as specific element extraction yielded insufficient content'
+          )
+        }
+      }
 
       // Clean up the extracted text
       const cleanedText = extractedText
@@ -174,9 +183,15 @@ export class AICVProcessor {
 
       if (this.verbose) {
         console.log(`Extracted ${cleanedText.length} characters of clean text`)
+        console.log(
+          `Clean text preview (first 500 chars): ${cleanedText.substring(
+            0,
+            500
+          )}...`
+        )
       }
 
-      if (!cleanedText || cleanedText.length < 50) {
+      if (!cleanedText || cleanedText.length < 20) {
         throw new Error('Insufficient text content extracted from URL')
       }
 
@@ -332,8 +347,93 @@ export class AICVProcessor {
 
       return cvData
     } catch (error) {
-      console.error(`Error processing URL: ${error}`)
+      console.error(
+        `Error processing URL: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
       throw error
+    }
+  }
+
+  /**
+   * Fetch URL content using Playwright with 5-second wait for dynamic content
+   */
+  private async fetchUrlWithPlaywright(url: string): Promise<string> {
+    let browser: Browser | null = null
+    let page: Page | null = null
+
+    try {
+      if (this.verbose) {
+        console.log('Launching Playwright browser...')
+      }
+
+      // Launch browser
+      browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      })
+
+      page = await browser.newPage()
+
+      // Set user agent to mimic a real browser using the context method
+      await page.setExtraHTTPHeaders({
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      })
+
+      if (this.verbose) {
+        console.log('Navigating to URL...')
+      }
+
+      // Navigate to the page
+      await page.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      })
+
+      if (this.verbose) {
+        console.log('Page loaded, waiting 5 seconds for dynamic content...')
+      }
+
+      // Wait 5 seconds for dynamic content to load (your requested timeout)
+      await page.waitForTimeout(5000)
+
+      // Try to wait for some content to appear
+      try {
+        await page.waitForSelector('body', { timeout: 5000 })
+        if (this.verbose) {
+          console.log('Content detected on page')
+        }
+      } catch (selectorError) {
+        if (this.verbose) {
+          console.log('Proceeding with current content...')
+        }
+      }
+
+      // Get the page content
+      const html = await page.content()
+
+      if (this.verbose) {
+        console.log(
+          `Successfully fetched ${html.length} characters using Playwright`
+        )
+      }
+
+      return html
+    } catch (error) {
+      throw new Error(
+        `Playwright failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    } finally {
+      if (page) {
+        await page.close()
+      }
+      if (browser) {
+        await browser.close()
+      }
     }
   }
 
