@@ -8,6 +8,7 @@ export interface AIModelConfig {
 export enum ConversionType {
   PdfToImages = 'PdfToImages',
   PdfToTexts = 'PdfToTexts',
+  UrlToTexts = 'UrlToTexts',
 }
 
 /**

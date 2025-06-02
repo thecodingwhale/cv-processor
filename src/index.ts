@@ -34,8 +34,8 @@ program
 
 program
   .command('process')
-  .description('Process a single CV/resume PDF file')
-  .argument('<pdf-file>', 'Path to the CV/resume PDF file')
+  .description('Process a CV/resume PDF file or URL')
+  .argument('<input>', 'Path to the CV/resume PDF file or URL to process')
   .option(
     '-o, --output <file>',
     'Output JSON file (defaults to input filename with .json extension)'
@@ -53,7 +53,7 @@ program
   )
   .option(
     '--conversion-type <type>',
-    'Type of PDF conversion to use (pdftoimages, pdftotexts)',
+    'Type of conversion to use (pdftoimages, pdftotexts, urltotexts)',
     'pdftoimages'
   )
   .option(
@@ -65,18 +65,22 @@ program
     'Expected total number of fields for emptiness percentage calculation',
     parseInt
   )
-  .action(async (pdfFile, options) => {
+  .action(async (input, options) => {
     try {
-      // Validate input file
-      if (!fs.existsSync(pdfFile)) {
-        console.error(`Error: Input file not found: ${pdfFile}`)
+      // Validate input - check if it's a URL or file path
+      const isUrl = input.startsWith('http://') || input.startsWith('https://')
+
+      if (!isUrl && !fs.existsSync(input)) {
+        console.error(`Error: Input file not found: ${input}`)
         process.exit(1)
       }
 
       // Determine output file
       const outputFile =
         options.output ||
-        `${path.basename(pdfFile, path.extname(pdfFile))}.json`
+        (isUrl
+          ? `url-${Date.now()}.json`
+          : `${path.basename(input, path.extname(input))}.json`)
 
       // Process CV
       const startTime = new Date()
@@ -106,10 +110,12 @@ program
       const conversionType =
         options.conversionType === 'pdftotexts'
           ? ConversionType.PdfToTexts
+          : options.conversionType === 'urltotexts'
+          ? ConversionType.UrlToTexts
           : ConversionType.PdfToImages
 
       console.log(`Using conversion type: ${conversionType}`)
-      const cvData = await processor.processCv(pdfFile, conversionType)
+      const cvData = await processor.processCv(input, conversionType)
 
       processor.saveToJson(cvData, outputFile)
 
