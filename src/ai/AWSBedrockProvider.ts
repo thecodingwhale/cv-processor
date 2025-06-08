@@ -306,7 +306,8 @@ export class AWSBedrockProvider implements AIProvider {
   async extractStructuredDataFromText<T>(
     texts: string[],
     dataSchema: object,
-    instructions: string
+    instructions: string,
+    categories?: object[]
   ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
     try {
       console.log(`[AWSBedrockProvider] Processing ${texts.length} text pages`)
@@ -315,6 +316,9 @@ export class AWSBedrockProvider implements AIProvider {
       const modelId = this.config.model || 'apac.amazon.nova-micro-v1:0'
 
       const prompt = `
+        Pre defined categories that will be used to pull the category_id from:
+        ${JSON.stringify(categories, null, 2)}
+        
         ${instructions}
         
         Extract information from the following text according to this JSON schema:

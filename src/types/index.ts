@@ -56,4 +56,5 @@ export interface ProcessorOptions {
   outputPath?: string
   instructionsPath?: string // Path to custom instructions file
   expectedTotalFields?: number // Expected total number of fields for emptiness calculation
+  categories?: object[]
 }

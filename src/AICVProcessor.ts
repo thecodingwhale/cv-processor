@@ -17,6 +17,7 @@ export class AICVProcessor {
   private verbose: boolean
   private instructionsPath: string
   private expectedTotalFields?: number
+  private categories?: object[]
 
   // private industryContext: string // Store industry context for patterns
 
@@ -29,6 +30,7 @@ export class AICVProcessor {
     this.instructionsPath =
       options.instructionsPath || path.join(process.cwd(), 'instructions.txt')
     this.expectedTotalFields = options.expectedTotalFields
+    this.categories = options.categories || []
 
     if (this.verbose) {
       console.log('AI CV Processor initialized')
@@ -229,7 +231,8 @@ export class AICVProcessor {
         await this.aiProvider.extractStructuredDataFromText<CVData>(
           [cleanedText],
           dataSchema,
-          instructions
+          instructions,
+          this.categories
         )
 
       // Calculate processing time
@@ -505,7 +508,8 @@ export class AICVProcessor {
         cvData = await this.aiProvider.extractStructuredDataFromText<CVData>(
           inputData,
           dataSchema,
-          instructions
+          instructions,
+          this.categories
         )
       }
 

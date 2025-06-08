@@ -43,7 +43,8 @@ export interface AIProvider {
   extractStructuredDataFromText<T>(
     texts: string[],
     dataSchema: object,
-    instructions: string
+    instructions: string,
+    categories?: object[]
   ): Promise<T & { tokenUsage?: TokenUsageInfo }>
 
   /**

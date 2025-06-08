@@ -208,7 +208,8 @@ export class GrokAIProvider implements AIProvider {
   async extractStructuredDataFromText<T>(
     texts: string[],
     dataSchema: object,
-    instructions: string
+    instructions: string,
+    categories?: object[]
   ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
     try {
       const modelName = this.config.model || 'grok-2-vision-1212'
