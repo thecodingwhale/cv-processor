@@ -34,7 +34,9 @@ Do not skip or ignore any lines. If the category is unclear or not listed, place
 🧠 Category mapping logic:
 
 - Do your best to assign clear matches: e.g., "Feature Film" → "Film", "Voice Over" → "Voice"
+- Also make sure to pull and use the pre defined categories.
 - If not confident → always assign `"Other"`
+- Also for the "Other" asside a unique UUIDv4
 - Never drop or skip a credit even if incomplete
 - Allow credits with only `title` or only `role` if that's all that's available
 
@@ -42,6 +44,7 @@ Do not skip or ignore any lines. If the category is unclear or not listed, place
 
 🛠️ UUIDs:
 
-- For each category_id and credit id → always use a unique UUIDv4
+- For each category_id use the pre defined categories and pull the category_id from their 
+- credit id → always use a unique UUIDv4
 
 ---
