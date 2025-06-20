@@ -93,28 +93,6 @@ export class ReportGenerator {
           ? (successfulExecutions.length / totalProviders) * 100
           : 0
 
-      // Check if we have consensus
-      const hasConsensus = successfulExecutions.some(
-        (data) => data.cvData.metadata?.accuracy?.consensusSource !== undefined
-      )
-
-      // Get consensus strength if available
-      let consensusStrength = 0
-      const consensusData = successfulExecutions.find(
-        (data) => data.cvData.metadata?.accuracy?.consensusSource !== undefined
-      )
-      if (consensusData?.cvData.metadata?.accuracy?.consensusSource) {
-        const metadata = consensusData.cvData.metadata.accuracy.consensusSource
-        // Check if metadata is an object with consensusStrength property
-        if (
-          metadata &&
-          typeof metadata === 'object' &&
-          'consensusStrength' in metadata
-        ) {
-          consensusStrength = (metadata as any).consensusStrength * 100
-        }
-      }
-
       // Start building the markdown report
       let report = `# CV Processing Report\n\n`
       report += `**CV**: ${cvName}.pdf\n`
@@ -127,7 +105,6 @@ export class ReportGenerator {
       report += `- **Successful**: ${successfulExecutions.length}\n`
       report += `- **Failed**: ${failedExecutions.length}\n`
       report += `- **Success Rate**: ${successRate.toFixed(1)}%\n`
-      report += `- **Consensus Baseline**: ${hasConsensus ? 'Yes' : 'No'}\n\n`
 
       // Successful executions section
       report += `## Successful Executions\n\n`
@@ -184,29 +161,6 @@ export class ReportGenerator {
         slowest.model
       }) - ${slowest.time.toFixed(2)}s\n`
       report += `- **Average Time**: ${avgTime.toFixed(2)}s\n\n`
-
-      // Group by consensus source
-      const byConsensusSource = successfulExecutions.reduce((acc, data) => {
-        const source =
-          data.cvData.metadata?.accuracy?.consensusSource || 'Unknown'
-        if (!acc[source]) {
-          acc[source] = []
-        }
-        acc[source].push(data)
-        return acc
-      }, {} as Record<string, ExecutionData[]>)
-
-      // Add consensus-based accuracy if available
-      const consensusExecution = successfulExecutions.find(
-        (data) => data.cvData.metadata?.accuracy?.consensusSource
-      )
-
-      if (consensusExecution?.cvData.metadata?.accuracy?.consensusSource) {
-        const metadata =
-          consensusExecution.cvData.metadata.accuracy.consensusSource
-        report += `\n### Consensus-based Accuracy\n`
-        report += `Source: ${metadata}\n\n`
-      }
 
       // Add accuracy comparison
       report += `### Accuracy Comparison\n\n`

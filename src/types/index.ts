@@ -27,7 +27,6 @@ export interface CVData {
       structuralValidity?: number
       structuralFidelity: number
       missingFields: string[]
-      consensusSource?: string
     }
     emptinessPercentage?: {
       percentage: number
