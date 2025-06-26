@@ -79,11 +79,13 @@ export class AWSBedrockProvider implements AIProvider {
       )
     }
 
-    this.client = new BedrockRuntimeClient({
+    const awsConfig = {
       region: config.region || process.env.AWS_REGION || 'us-east-1',
       credentials:
         Object.keys(credentials).length > 0 ? credentials : undefined,
-    })
+    }
+
+    this.client = new BedrockRuntimeClient(awsConfig)
   }
 
   /**
@@ -121,6 +123,88 @@ export class AWSBedrockProvider implements AIProvider {
     return Math.ceil(text.length / 4)
   }
 
+  /**
+   * Extract all searchable terms from categories (names + keywords)
+   */
+  private extractCategoryTerms(categories?: object[]): string[] {
+    if (!categories || categories.length === 0) {
+      return []
+    }
+
+    const terms: string[] = []
+
+    for (const category of categories) {
+      const cat = category as any
+
+      // Add category name if it exists
+      if (cat.name && typeof cat.name === 'string') {
+        terms.push(cat.name.toLowerCase())
+      }
+
+      // Add keywords if they exist
+      if (cat.keywords && Array.isArray(cat.keywords)) {
+        for (const keyword of cat.keywords) {
+          if (typeof keyword === 'string') {
+            terms.push(keyword.toLowerCase())
+          }
+        }
+      }
+    }
+
+    return terms
+  }
+
+  /**
+   * Check if text contains any category-related terms (case-insensitive, substring matching)
+   */
+  private textMatchesCategories(
+    text: string,
+    categoryTerms: string[]
+  ): boolean {
+    if (categoryTerms.length === 0) {
+      return true // If no categories provided, include all texts
+    }
+
+    const lowerText = text.toLowerCase()
+
+    return categoryTerms.some((term) => lowerText.includes(term))
+  }
+
+  /**
+   * Filter texts to only include those that match category terms
+   */
+  private filterTextsByCategories(
+    texts: string[],
+    categories?: object[]
+  ): string[] {
+    const categoryTerms = this.extractCategoryTerms(categories)
+
+    if (categoryTerms.length === 0) {
+      console.log(
+        '[AWSBedrockProvider] No category terms found, including all texts'
+      )
+      return texts
+    }
+
+    console.log(
+      `[AWSBedrockProvider] Filtering texts using ${categoryTerms.length} category terms`
+    )
+    console.log(
+      '[AWSBedrockProvider] Category terms:',
+      categoryTerms.join(', ')
+    )
+
+    const filteredTexts = texts.filter((text) =>
+      this.textMatchesCategories(text, categoryTerms)
+    )
+
+    console.log(
+      `[AWSBedrockProvider] Filtered ${texts.length} texts down to ${filteredTexts.length} matching texts`
+    )
+
+    return filteredTexts
+  }
+
   async extractStructuredDataFromImages<T>(
     imageUrls: string[],
     dataSchema: object,
@@ -132,7 +216,7 @@ export class AWSBedrockProvider implements AIProvider {
         `[AWSBedrockProvider] Extracting structured data with AWS Bedrock`
       )
 
-      const modelId = this.config.model || 'apac.amazon.nova-micro-v1:0'
+      const modelId = this.config.model || 'apac.amazon.nova-lite-v1:0'
 
       const prompt = `
         ${instructions}
@@ -212,7 +296,7 @@ export class AWSBedrockProvider implements AIProvider {
         inferenceConfig: {
           maxTokens: this.config.maxTokens || 4096,
           temperature: this.config.temperature || 0,
-          topP: 1,
+          topP: 0.9,
         },
       })
 
@@ -313,7 +397,34 @@ export class AWSBedrockProvider implements AIProvider {
       console.log(`[AWSBedrockProvider] Processing ${texts.length} text pages`)
       console.log(`[AWSBedrockProvider] Extracting structured data from text`)
 
-      const modelId = this.config.model || 'apac.amazon.nova-micro-v1:0'
+      // Pre-cleanup: Filter texts to match expected categories
+      const filteredTexts = this.filterTextsByCategories(texts, categories)
+      console.log('[AWSBedrockProvider] > filteredTexts: ', filteredTexts)
+      // Early exit if no texts match categories
+      if (filteredTexts.length === 0) {
+        console.warn(
+          '[AWSBedrockProvider] No texts match the expected categories after filtering'
+        )
+        // Return empty result with zero token usage
+        const emptyResult = {} as T & {
+          tokenUsage?: TokenUsageInfo
+          resume: []
+          resume_show_years: false
+          empty_result: true
+        }
+        emptyResult.tokenUsage = {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          estimatedCost: 0,
+        }
+        emptyResult.resume = []
+        emptyResult.resume_show_years = false
+        emptyResult.empty_result = true
+        return emptyResult
+      }
+
+      const modelId = this.config.model || 'apac.amazon.nova-lite-v1:0'
 
       const prompt = `
         Pre defined categories that will be used to pull the category_id from:
@@ -328,7 +439,7 @@ export class AWSBedrockProvider implements AIProvider {
         IMPORTANT: Return ONLY the JSON object, with no additional text or markdown formatting.
 
         Text content:
-        ${texts.join('\n\n')}
+        ${filteredTexts.join('\n\n')}
       `
 
       // Create the command using the Converse API format
@@ -343,7 +454,7 @@ export class AWSBedrockProvider implements AIProvider {
         inferenceConfig: {
           maxTokens: this.config.maxTokens || 4096,
           temperature: this.config.temperature || 0,
-          topP: 1,
+          topP: 0.9,
         },
       })
 
@@ -423,7 +534,7 @@ export class AWSBedrockProvider implements AIProvider {
   getModelInfo(): { provider: string; model: string } {
     return {
       provider: 'aws',
-      model: this.config.model || 'apac.amazon.nova-micro-v1:0',
+      model: this.config.model || 'apac.amazon.nova-lite-v1:0',
     }
   }
 }
