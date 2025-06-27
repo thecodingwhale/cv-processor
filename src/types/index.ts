@@ -1,6 +1,7 @@
 import { ConversionType } from './AIProvider'
 
 export interface CVData {
+  texts: string[]
   credits: Array<{
     projectTitle: string
     type: string
@@ -13,7 +14,6 @@ export interface CVData {
   }>
   metadata?: {
     processedDate: string
-    sourceFile: string
     model?: string
     provider?: string
     error?: string // Add optional error property
