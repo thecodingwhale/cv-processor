@@ -4,7 +4,6 @@ import * as path from 'path'
 import { Browser, chromium, Page } from 'playwright'
 import { CVData, ProcessorOptions } from './types'
 import { AIProvider, ConversionType } from './types/AIProvider'
-import { convertPdfToImages, convertPdfToTexts } from './utils/document'
 import { EmptinessPercentageCalculator } from './utils/EmptinessPercentageCalculator'
 import { ReportGenerator } from './utils/reportGenerator'
 
@@ -245,7 +244,6 @@ export class AICVProcessor {
       // Add metadata
       cvData.metadata = {
         processedDate: new Date().toISOString(),
-        sourceFile: url,
         processingTime: processingTime,
         conversionType: ConversionType.UrlToTexts,
         ...this.aiProvider.getModelInfo(),
@@ -385,15 +383,17 @@ export class AICVProcessor {
    * Process a CV PDF and extract structured information using AI
    */
   async processCv(
-    pdfPath: string,
+    texts: string[],
     conversionType: ConversionType = ConversionType.PdfToImages
   ): Promise<CVData> {
     // Check if input is a URL and conversionType is UrlToTexts
-    if (conversionType === ConversionType.UrlToTexts) {
-      return this.processUrlToTexts(pdfPath)
-    }
+    // note: the processUrlToTexts needs to be call outside this function
+    // since it calls the url to pdf before getting the texts
+    // if (conversionType === ConversionType.UrlToTexts) {
+    //   return this.processUrlToTexts(pdfPath)
+    // }
 
-    console.log(`Processing CV with AI: ${pdfPath} (${conversionType})`)
+    console.log(`Processing CV with AI: ${texts} (${conversionType})`)
 
     // Track start time for processing
     const startTime = new Date().getTime()
@@ -429,30 +429,36 @@ export class AICVProcessor {
       }
 
       let cvData: CVData
-      let inputData: string[]
 
-      if (conversionType === ConversionType.PdfToImages) {
-        // Convert PDF to images
-        inputData = await convertPdfToImages(pdfPath)
+      // if (conversionType === ConversionType.PdfToImages) {
+      //   // Convert PDF to images
+      //   inputData = await convertPdfToImages(pdfPath)
 
-        // Use AI to extract structured data from images
-        cvData = await this.aiProvider.extractStructuredDataFromImages<CVData>(
-          inputData,
-          dataSchema,
-          instructions
-        )
-      } else {
-        // Convert PDF to text
-        inputData = await convertPdfToTexts(pdfPath)
+      //   // Use AI to extract structured data from images
+      //   cvData = await this.aiProvider.extractStructuredDataFromImages<CVData>(
+      //     inputData,
+      //     dataSchema,
+      //     instructions
+      //   )
+      // } else {
+      //   // Convert PDF to text
+      //   inputData = await convertPdfToTexts(pdfPath)
 
-        // Use AI to extract structured data from text
-        cvData = await this.aiProvider.extractStructuredDataFromText<CVData>(
-          inputData,
-          dataSchema,
-          instructions,
-          this.categories
-        )
-      }
+      //   // Use AI to extract structured data from text
+      //   cvData = await this.aiProvider.extractStructuredDataFromText<CVData>(
+      //     inputData,
+      //     dataSchema,
+      //     instructions,
+      //     this.categories
+      //   )
+      // }
+
+      cvData = await this.aiProvider.extractStructuredDataFromText<CVData>(
+        texts,
+        dataSchema,
+        instructions,
+        this.categories
+      )
 
       // Calculate processing time
       const processingTime = (new Date().getTime() - startTime) / 1000
@@ -465,7 +471,6 @@ export class AICVProcessor {
       // Add metadata before accuracy evaluation
       cvData.metadata = {
         processedDate: new Date().toISOString(),
-        sourceFile: path.basename(pdfPath),
         processingTime: processingTime,
         conversionType: conversionType,
         ...this.aiProvider.getModelInfo(),
@@ -489,7 +494,7 @@ export class AICVProcessor {
       } else {
         // Estimate tokens if not provided by the AI provider
         const estimatedInputTokens = this.estimateTokenCount(
-          instructions + JSON.stringify(inputData)
+          instructions + JSON.stringify(texts)
         )
         const estimatedOutputTokens = this.estimateTokenCount(
           JSON.stringify(cvData)
