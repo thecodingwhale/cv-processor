@@ -20,6 +20,34 @@ import registerMergeReportsCommand from './cli/mergeReports'
 import { CVData } from './types'
 import { AIProvider, ConversionType } from './types/AIProvider'
 import { getAIConfig } from './utils/aiConfig'
+import pdfParse = require('pdf-parse')
+
+/**
+ * Convert PDF to text using pdf-parse
+ * @param pdfPath Path to the PDF file
+ * @returns Array of text content from each page
+ */
+export async function convertPdfToTexts(pdfPath: string): Promise<string[]> {
+  try {
+    // Read the PDF file
+    const dataBuffer = fs.readFileSync(pdfPath)
+
+    // Parse the PDF
+    const data = await pdfParse(dataBuffer)
+
+    // Split the text into pages
+    // Note: pdf-parse doesn't provide direct page separation
+    // We'll use a simple heuristic to split pages based on page numbers
+    const pages = data.text
+      .split(/\n\s\d+\s\n/)
+      .filter((page: string) => page.trim().length > 0)
+
+    return pages
+  } catch (error) {
+    console.error('Error converting PDF to text:', error)
+    throw error
+  }
+}
 
 // Load environment variables
 dotenv.config()
@@ -158,7 +186,8 @@ export async function processCv(
   conversionType: ConversionType = ConversionType.PdfToTexts
 ): Promise<CVData> {
   const processor = new AICVProcessor(aiProvider, options)
-  return processor.processCv(pdfPath, conversionType)
+  const texts = await convertPdfToTexts(pdfPath)
+  return processor.processCv(texts, conversionType)
 }
 
 export { AICVProcessor, ConversionType }
