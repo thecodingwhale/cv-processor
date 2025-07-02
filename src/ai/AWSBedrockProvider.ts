@@ -394,12 +394,8 @@ export class AWSBedrockProvider implements AIProvider {
     categories?: object[]
   ): Promise<T & { tokenUsage?: TokenUsageInfo }> {
     try {
-      console.log(`[AWSBedrockProvider] Processing ${texts.length} text pages`)
-      console.log(`[AWSBedrockProvider] Extracting structured data from text`)
-
       // Pre-cleanup: Filter texts to match expected categories
       const filteredTexts = this.filterTextsByCategories(texts, categories)
-      console.log('[AWSBedrockProvider] > filteredTexts: ', filteredTexts)
       // Early exit if no texts match categories
       if (filteredTexts.length === 0) {
         console.warn(

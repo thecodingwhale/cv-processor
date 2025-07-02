@@ -393,8 +393,6 @@ export class AICVProcessor {
     //   return this.processUrlToTexts(pdfPath)
     // }
 
-    console.log(`Processing CV with AI: ${texts} (${conversionType})`)
-
     // Track start time for processing
     const startTime = new Date().getTime()
 
