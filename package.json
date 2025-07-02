@@ -1,6 +1,6 @@
 {
   "name": "@thecodingwhale/cv-processor",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "CV Processor to extract structured data from PDF resumes using TypeScript",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
