@@ -5,6 +5,7 @@ import {
 import { jsonrepair } from 'jsonrepair'
 import { AIModelConfig, AIProvider, TokenUsageInfo } from '../types/AIProvider'
 import { replaceUUIDv4Placeholders } from '../utils/data'
+import { transformCredits } from '../utils/filtering'
 
 export interface AWSBedrockConfig extends Omit<AIModelConfig, 'apiKey'> {
   region?: string
@@ -507,7 +508,12 @@ export class AWSBedrockProvider implements AIProvider {
           throw new Error(`AI returned invalid JSON: ${err}`)
         }
 
-        const parsedJson = JSON.parse(fixedJson)
+        let parsedJson = JSON.parse(fixedJson)
+        console.log(`[AWSBedrockProvider] old parsedJson: ${parsedJson}`)
+        if (parsedJson.credits) {
+          parsedJson = transformCredits(parsedJson)
+        }
+        console.log(`[AWSBedrockProvider] new parsedJson: ${parsedJson}`)
 
         return {
           ...replaceUUIDv4Placeholders(parsedJson),
